@@ -1,0 +1,31 @@
+﻿@inject NavigationManager NavManager
+@page "/index"
+
+<h1>Hello, world!</h1>
+
+Welcome to your new app.
+
+<AuthorizeView>
+    <Authorized>
+        <p>Welcome, @context.User.Identity.Name</p>
+    </Authorized>
+    <NotAuthorized>
+        <LoginRedirect/>
+    </NotAuthorized>
+</AuthorizeView>
+
+
+
+@code{
+    //[CascadingParameter] protected Task<AuthenticationState> AuthStat { get; set; }
+
+    //protected async override Task OnInitializedAsync()
+    //{
+    //    base.OnInitialized();
+    //    if (!(await AuthStat).User.Identity.IsAuthenticated)
+    //    {
+    //        NavManager.NavigateTo("/");
+    //    }
+    //}
+
+}

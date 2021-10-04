@@ -1,0 +1,124 @@
+﻿@layout LoginLayout
+@using VilicappAPI
+@page "/printrent"
+@page "/printrent/{woId}"
+@inject NavigationManager NavManager
+@inject WorkOrderClient workOrderClient
+@inject NavigationManager NavManager
+@inject IJSRuntime jsRuntime
+@inject Blazored.SessionStorage.ISessionStorageService sessionStorage
+
+
+<AuthorizeView Context="neki">
+    <Authorized>
+        <div style="width:100%">
+            <EditForm Model="workOrderRent">
+                <MudText Typo="Typo.h5">Delovni nalog - najem</MudText>
+                <MudTextField @bind-Value="workOrderRent.Company" For="@(() => workOrderRent.Company)" Label="Podjetje" Variant="Variant.Text"></MudTextField>
+                <MudTextField @bind-Value="workOrderRent.TaxNumber" For="@(() => workOrderRent.TaxNumber)" Label="Davčna številka" Variant="Variant.Text"></MudTextField>
+                <MudTextField @bind-Value="workOrderRent.Contact" For="@(() => workOrderRent.Contact)" Label="Kontakt" Variant="Variant.Text"></MudTextField>
+                <MudTextField @bind-Value="workOrderRent.VehicleName" For="@(() => workOrderRent.VehicleName)" Label="Vrsta vozila" Variant="Variant.Text"></MudTextField>
+                <MudDatePicker Label="Začetek najema" DateFormat="dd.MM.yyyy" @bind-Date="workOrderRent.RentStart" DisableToolbar="true" />
+                <MudDatePicker Label="Konec najema" DateFormat="dd.MM.yyyy" @bind-Date="workOrderRent.RentEnd" DisableToolbar="true" />
+
+                <MudTable Class="mt-4" Items="@rentDetailList">
+                    <ToolBarContent>
+                        <MudText Typo="Typo.h6">Podatki od najemu</MudText>
+                        <MudSpacer />
+                    </ToolBarContent>
+                    <HeaderContent>
+                        <MudTh>Najem/dni</MudTh>
+                        <MudTh>Cena</MudTh>
+                        <MudTh>Skupaj</MudTh>
+                    </HeaderContent>
+                    <RowTemplate Context="Main">
+                        <MudTd DataLabel="Najem/dni">@Main.RentDays</MudTd>
+                        <MudTd DataLabel="Cena">@Main.Price €</MudTd>
+                        <MudTd DataLabel="Skupaj">@((Main.RentDays.Value * Main.Price.Value).ToString("0.##")) €</MudTd>
+                    </RowTemplate>
+                </MudTable>
+
+                <MudTable Class="mt-4" Items="@transportationList">
+                    <ToolBarContent>
+                        <MudText Typo="Typo.h6">Opravljeni prevozi</MudText>
+                        <MudSpacer />
+                    </ToolBarContent>
+
+                    <HeaderContent>
+                        <MudTh>Relacija</MudTh>
+                        <MudTh>Fiksen strošek</MudTh>
+                        <MudTh>Kilometrina</MudTh>
+                        <MudTh>Cena/km</MudTh>
+                        <MudTh>Skupaj</MudTh>
+                    </HeaderContent>
+                    <RowTemplate Context="Main">
+                        <MudTd DataLabel="Relacija">@Main.Relation</MudTd>
+
+                        <MudTd DataLabel="Fiksen strošek">
+                            <MudCheckBox @bind-Checked="@Main.FixedCost" ReadOnly="true"></MudCheckBox>
+                        </MudTd>
+
+                        <MudTd DataLabel="Kilometrina">@Main.Kilometers</MudTd>
+
+                        <MudTd DataLabel="Cena">@Main.Price €</MudTd>
+
+                        @if (@Main.FixedCost.GetValueOrDefault(false))
+                        {
+                            <MudTd DataLabel="Skupaj">@(Main.Price.GetValueOrDefault(0).ToString("0.##")) €</MudTd>
+                        }
+                        else
+                        {
+                            <MudTd DataLabel="Skupaj">@((Main.Kilometers * Main.Price).GetValueOrDefault(0).ToString("0.##")) €</MudTd>
+                        }
+
+                    </RowTemplate>
+                </MudTable>
+
+                <MudTextField @bind-Value="workOrderRent.Note" Label="Opombe" Variant="Variant.Text"></MudTextField>
+                <MudText Class="mt-3" Typo="Typo.h5">Skupaj: @workOrderRent.PriceTotal €</MudText>
+
+            </EditForm>
+
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <LoginRedirect></LoginRedirect>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+
+    [Parameter]
+    public string woId { get; set; }
+
+    private WorkOrderRentUI workOrderRent = new();
+
+    private List<RentDetailUI> rentDetailList = new();
+    private List<TransportationRentUI> transportationList = new();
+    private bool printShown = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var loggedUser = await sessionStorage.GetItemAsync<LoggedInUserModel>("User");
+        if (loggedUser == null)
+        {
+            return;
+        }
+        workOrderRent = await workOrderClient.GetWorkOrderRentAsync(int.Parse(woId));
+        rentDetailList = workOrderRent.RentDetails.ToList();
+        transportationList = workOrderRent.TransportationRents.ToList();
+
+        StateHasChanged();
+    }
+
+    protected override async void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender && !printShown)
+        {
+            printShown = true;
+            await jsRuntime.InvokeVoidAsync("printWholePage");
+            NavManager.NavigateTo("/workorderoverview");
+        }
+    }
+
+}

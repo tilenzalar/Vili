@@ -1,0 +1,302 @@
+﻿@page "/forkliftmaps"
+@using GoogleMapsComponents
+@using GoogleMapsComponents.Maps
+@using VilicappAPI
+@using VilicappClient.Models
+@inject Blazored.SessionStorage.ISessionStorageService sessionStorage
+@inject ForkLiftClient forkLiftClient
+@inject NavigationManager NavManager
+<AuthorizeView>
+    <Authorized>
+        <MudText Typo="Typo.h6">Pregled izposoj viličarjev</MudText>
+        <GoogleMap @ref="@map1" Id="map1" Options="@mapOptions" OnAfterInit="@(async () => await OnAfterInitAsync())"></GoogleMap>
+
+        <div style="max-width: 300px">
+            <EditForm Model="deleteRent" Context="neki">
+                <MudTextField @bind-Value="deleteRent.Client" Label="Stranka" Variant="Variant.Text" ReadOnly="true"></MudTextField>
+                <MudTextField @bind-Value="deleteRent.ForkLiftExtendedName" Label="Viličar" Variant="Variant.Text" ReadOnly="true"></MudTextField>
+                <MudDatePicker Label="Začetek najema" DateFormat="dd.MM.yyyy" @bind-Date="deleteRent.StartRent" DisableToolbar="true" ReadOnly="true" />
+                <MudDatePicker Label="Konec najema" DateFormat="dd.MM.yyyy" @bind-Date="deleteRent.EndRent" DisableToolbar="true" ReadOnly="true" />
+                <MudButton OnClick="DeleteForkLiftRent" Variant="Variant.Filled" Color="Color.Error" Class="px-10 mt-2" Disabled="deleteRent.Id <= 0">Izbriši</MudButton>
+            </EditForm>
+        </div>
+        <MudDialog @bind-IsVisible="visibleAddDialog">
+            <TitleContent>
+                <MudText Typo="Typo.h6">
+                    <MudIcon Icon="@Icons.Material.Filled.Edit" Class="mr-3" /> Nov zapis
+                </MudText>
+            </TitleContent>
+            <DialogContent>
+                <MudTextField @bind-Value="@forkLiftRent.Client" Label="Stranka" />
+                <MudSelect T="ForkLiftUI" @bind-Value="@forkLift" Label="Viličar" ToStringFunc="@converter" Variant="Variant.Outlined" OffsetY="true">
+
+                    @foreach (var forkliftMoj in forkLiftList)
+                    {
+                        <MudSelectItem Value="@(new ForkLiftUI() { Id = forkliftMoj.Id, Name=forkliftMoj.Name, InternalNumber=forkliftMoj.InternalNumber})" />
+                    }
+
+                </MudSelect>
+                <MudDatePicker Label="Začetek najema" DateFormat="dd.MM.yyyy" @bind-Date="forkLiftRent.StartRent" DisableToolbar="true" />
+                <MudDatePicker Label="Konec najema" DateFormat="dd.MM.yyyy" @bind-Date="forkLiftRent.EndRent" DisableToolbar="true" />
+            </DialogContent>
+            <DialogActions>
+                <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="CancelAdd" Class="px-10">Prekliči</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="ConfirmAdd" Class="px-10">Shrani</MudButton>
+            </DialogActions>
+        </MudDialog>
+
+        <MudDialog @bind-IsVisible="visibleDeleteDialog">
+            <TitleContent>
+                <MudText Typo="Typo.h6">
+                    <MudIcon Icon="@Icons.Material.Filled.Delete" Class="mr-3" /> Brisanje
+                </MudText>
+            </TitleContent>
+            <DialogContent>
+                Ali ste prepričani, da želite izbrisati izposojo?
+            </DialogContent>
+            <DialogActions>
+                <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="CancelDelete" Class="px-10">Prekliči</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="ConfirmDelete" Class="px-10">Potrdi</MudButton>
+            </DialogActions>
+        </MudDialog>
+    </Authorized>
+    <NotAuthorized>
+        <LoginRedirect></LoginRedirect>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private GoogleMap map1;
+
+    private MapOptions mapOptions;
+    private bool visibleAddDialog = false;
+    private bool visibleDeleteDialog = false;
+    private LatLngLiteral newCoords = new();
+    private ForkLiftRentUI forkLiftRent = new();
+    private ForkLiftUI forkLift = new();
+    private List<ForkLiftUI> forkLiftList = new();
+
+    private List<ForkLiftRentUI> markers = new();
+    private ForkLiftRentUI deleteRent = new();
+    private List<Marker> markersReal = new List<Marker>();
+    private InfoWindow openedInfoWindow;
+
+    protected override async Task OnInitializedAsync()
+    {
+
+        mapOptions = new MapOptions()
+        {
+            Zoom = 8,
+            Center = new LatLngLiteral()
+            {
+                Lat = 46.056946,
+                Lng = 14.505751
+            },
+            MapTypeId = MapTypeId.Roadmap
+        };
+
+        var loggedUser = await sessionStorage.GetItemAsync<LoggedInUserModel>("User");
+        if (loggedUser == null)
+        {
+            return;
+        }
+        if (loggedUser.RoleId != (int)UserRole.Admin)
+        {
+            NavManager.NavigateTo("/");
+        }
+
+        forkLiftList = (await forkLiftClient.GetNotRentedForkLiftsAsync()).ToList();
+        markers = (await forkLiftClient.GetAllForkLiftRentsAsync()).ToList();
+        DrawMarkers();
+        StateHasChanged();
+    }
+
+    private async Task OnAfterInitAsync()
+    {
+        await map1.InteropObject.AddListener<GoogleMapsComponents.Maps.MouseEvent>("dblclick", async (e) => await OnDbClick(e));
+    }
+
+    private async Task OnDbClick(GoogleMapsComponents.Maps.MouseEvent e)
+    {
+        visibleAddDialog = true;
+        newCoords = e.LatLng;
+        StateHasChanged();
+    }
+
+    private void CancelAdd()
+    {
+        forkLiftRent = new();
+        forkLift = new();
+        visibleAddDialog = false;
+    }
+
+    private async void ConfirmAdd()
+    {
+        forkLiftRent.Lat = newCoords.Lat;
+        forkLiftRent.Lng = newCoords.Lng;
+        forkLiftRent.ForkLiftId = forkLift.Id;
+        forkLiftRent.IsFinished = false;
+        var newId = await forkLiftClient.AddForkLiftRentAsync(forkLiftRent);
+        forkLiftRent.Id = newId;
+        forkLiftRent.ForkLiftName = forkLift.Name;
+
+        var marker = await Marker.CreateAsync(map1.JsRuntime, new MarkerOptions()
+        {
+            Position = newCoords,
+            Map = map1.InteropObject,
+            Title = newId.ToString(),
+            Icon = GetRelevantIcon(forkLiftRent.EndRent)
+        });
+
+        var infoWindow = await InfoWindow.CreateAsync(map1.JsRuntime, new InfoWindowOptions()
+        {
+            Position = newCoords
+        });
+
+        var rentStart = forkLiftRent.StartRent.HasValue ? forkLiftRent.StartRent.Value.ToString("dd.MM.yyyy") : "";
+        var rentEnd = forkLiftRent.EndRent.HasValue ? forkLiftRent.EndRent.Value.ToString("dd.MM.yyyy") : "";
+
+        var contentString = "Viličar: " + forkLiftRent.ForkLiftExtendedName + "<br>" +
+            "Stranka: " + forkLiftRent.Client + "<br>" +
+            "Od: " + rentStart + "<br>" +
+            "Do: " + rentEnd;
+
+
+
+        await marker.AddListener<GoogleMapsComponents.Maps.MouseEvent>("click", async e =>
+        {
+            await infoWindow.SetContent(contentString);
+            await infoWindow.SetPosition(newCoords);
+            await infoWindow.Open(map1.InteropObject);
+            openedInfoWindow = infoWindow;
+
+            var id = await marker.GetTitle();
+            deleteRent = markers.Where(m => m.Id.ToString() == id).FirstOrDefault();
+            StateHasChanged();
+        });
+        markersReal.Add(marker);
+        markers.Add(forkLiftRent);
+
+        forkLiftRent = new();
+        forkLift = new();
+        forkLiftList = (await forkLiftClient.GetNotRentedForkLiftsAsync()).ToList();
+        visibleAddDialog = false;
+        StateHasChanged();
+    }
+
+    private async void DrawMarkers()
+    {
+        foreach (var rent in markers)
+        {
+            var pos = new LatLngLiteral()
+            {
+                Lat = rent.Lat,
+                Lng = rent.Lng
+            };
+            var marker = await Marker.CreateAsync(map1.JsRuntime, new MarkerOptions()
+            {
+                Position = pos,
+                Map = map1.InteropObject,
+                Title = rent.Id.ToString(),
+                Icon = GetRelevantIcon(rent.EndRent)
+            });
+
+            var infoWindow = await InfoWindow.CreateAsync(map1.JsRuntime, new InfoWindowOptions()
+            {
+                Position = pos
+            });
+
+            var rentStart = rent.StartRent.HasValue ? rent.StartRent.Value.ToString("dd.MM.yyyy") : "";
+            var rentEnd = rent.EndRent.HasValue ? rent.EndRent.Value.ToString("dd.MM.yyyy") : "";
+
+            var contentString = "Viličar: " + rent.ForkLiftExtendedName + "<br>" +
+                "Stranka: " + rent.Client + "<br>" +
+                "Od: " + rentStart + "<br>" +
+                "Do: " + rentEnd;
+
+            await marker.AddListener("click", async () =>
+            {
+                await infoWindow.SetContent(contentString);
+                await infoWindow.SetPosition(pos);
+                await infoWindow.Open(map1.InteropObject);
+                openedInfoWindow = infoWindow;
+
+            });
+
+            await marker.AddListener<GoogleMapsComponents.Maps.MouseEvent>("click", async e =>
+            {
+                var id = await marker.GetTitle();
+                deleteRent = markers.Where(m => m.Id.ToString() == id).FirstOrDefault();
+                StateHasChanged();
+            });
+            markersReal.Add(marker);
+        }
+        StateHasChanged();
+    }
+
+    private void DeleteForkLiftRent()
+    {
+        visibleDeleteDialog = true;
+    }
+
+    public void CancelDelete()
+    {
+        visibleDeleteDialog = false;
+    }
+
+    public async void ConfirmDelete()
+    {
+        var result = await forkLiftClient.FinishForkLiftRentAsync(deleteRent.Id);
+        forkLiftList = (await forkLiftClient.GetNotRentedForkLiftsAsync()).ToList();
+        foreach (var mr in markersReal)
+        {
+            if ((await mr.GetTitle()) == deleteRent.Id.ToString())
+            {
+                await mr.SetMap(null);
+                await openedInfoWindow.Close();
+                break;
+            }
+        }
+
+        deleteRent = new();
+        visibleDeleteDialog = false;
+        StateHasChanged();
+    }
+
+    private Icon GetRelevantIcon(DateTime? dateEnd)
+    {
+        if (!dateEnd.HasValue)
+        {
+            return new Icon()
+            {
+                Url = "Icons/greenicon.png"
+            };
+        }
+
+        var daysLeft = (dateEnd.Value - DateTime.Now).TotalDays;
+
+        if (daysLeft > 3)
+        {
+            return new Icon()
+            {
+                Url = "Icons/greenicon.png"
+            };
+        }
+        else if (daysLeft > 0)
+        {
+            return new Icon()
+            {
+                Url = "Icons/yellowicon.png"
+            };
+        }
+        else
+        {
+            return new Icon()
+            {
+                Url = "Icons/redicon.png"
+            };
+        }
+    }
+
+    Func<ForkLiftUI, string> converter = p => p?.InternalNumber + " - " + p?.Name;
+}

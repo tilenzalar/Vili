@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.31313.79
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "VilicappAPI", "VilicappAPI\VilicappAPI.csproj", "{08FB1A75-009A-4B5E-ADCB-42E4B28BF2CF}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "VilicappClient", "VilicappClient\VilicappClient.csproj", "{5EEBCB70-5702-44CB-9520-5617FC966466}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{08FB1A75-009A-4B5E-ADCB-42E4B28BF2CF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{08FB1A75-009A-4B5E-ADCB-42E4B28BF2CF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{08FB1A75-009A-4B5E-ADCB-42E4B28BF2CF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{08FB1A75-009A-4B5E-ADCB-42E4B28BF2CF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5EEBCB70-5702-44CB-9520-5617FC966466}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5EEBCB70-5702-44CB-9520-5617FC966466}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5EEBCB70-5702-44CB-9520-5617FC966466}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5EEBCB70-5702-44CB-9520-5617FC966466}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {8CBF7092-FB1E-490C-9FB4-3757F191FB22}
+	EndGlobalSection
+EndGlobal

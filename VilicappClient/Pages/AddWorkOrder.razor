@@ -1,0 +1,66 @@
+﻿@page "/addworkorder"
+@using VilicappAPI
+@inject WorkOrderClient workOrderClient
+@inject Blazored.SessionStorage.ISessionStorageService sessionStorage
+<AuthorizeView>
+    <Authorized>
+        <div style="max-width: 300px">
+            <MudSelect T="WorkOrderType" @bind-Value="@workOrderType" Label="Vrsta delovnega naloga" ToStringFunc="@converter" Variant="Variant.Outlined" OffsetY="true">
+                @foreach (var woType in workOrderTypes)
+                {
+                    <MudSelectItem Value="@(new WorkOrderType() { Id = woType.Id, Name=woType.Name})" />
+                }
+            </MudSelect>
+        </div>
+        @if (workOrderType.Id == 1)
+        {
+            <WorkOrderRepair lookupWOR="null"></WorkOrderRepair>
+        }
+        @if (workOrderType.Id == 2)
+        {
+            <WorkOrderTransport lookupWOT1="null"></WorkOrderTransport>
+        }
+        @if (workOrderType.Id == 3)
+        {
+            <WorkOrderRent lookupWOR="null"></WorkOrderRent>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <LoginRedirect></LoginRedirect>
+    </NotAuthorized>
+</AuthorizeView>
+@code{
+    public class WorkOrderType
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+    }
+    private List<WorkOrderType> workOrderTypes = new();
+    private WorkOrderType workOrderType = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var loggedUser = await sessionStorage.GetItemAsync<LoggedInUserModel>("User");
+        if (loggedUser == null)
+        {
+            return;
+        }
+        workOrderTypes.Add(new WorkOrderType
+        {
+            Id = 1,
+            Name = "Servis"
+        });
+        workOrderTypes.Add(new WorkOrderType
+        {
+            Id = 2,
+            Name = "Prevoz"
+        });
+        workOrderTypes.Add(new WorkOrderType
+        {
+            Id = 3,
+            Name = "Najem"
+        });
+    }
+
+    Func<WorkOrderType, string> converter = p => p?.Name;
+}

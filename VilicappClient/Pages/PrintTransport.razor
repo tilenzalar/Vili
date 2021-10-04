@@ -1,0 +1,191 @@
+﻿@layout LoginLayout
+@using VilicappAPI
+@page "/printtransport"
+@page "/printtransport/{woId}"
+@inject NavigationManager NavManager
+@inject WorkOrderClient workOrderClient
+@inject NavigationManager NavManager
+@inject IJSRuntime jsRuntime
+@inject Blazored.SessionStorage.ISessionStorageService sessionStorage
+
+<AuthorizeView Context="neki">
+    <Authorized>
+        <div style="width:100%">
+            <EditForm Model="workOrderTransport">
+                <MudText Typo="Typo.h5">Delovni nalog - prevoz</MudText>
+                <MudTextField @bind-Value="workOrderTransport.Company" Label="Podjetje" Variant="Variant.Text"></MudTextField>
+                <MudTextField @bind-Value="workOrderTransport.TaxNumber" Label="Davčna številka" Variant="Variant.Text"></MudTextField>
+                <MudTextField @bind-Value="workOrderTransport.Contact" Label="Kontakt" Variant="Variant.Text"></MudTextField>
+                <MudTextField @bind-Value="vehicleTypeName" Label="Vrsta vozila" Variant="Variant.Text"></MudTextField>
+
+                <MudTextField @bind-Value="workOrderTransport.Brand" Label="Znamka" Variant="Variant.Text"></MudTextField>
+                <MudTextField @bind-Value="workOrderTransport.LicenseNr" Label="Reg. št." Variant="Variant.Text"></MudTextField>
+                <MudDatePicker Label="Datum" DateFormat="dd.MM.yyyy" @bind-Date="workOrderTransport.WorkOrderDate" DisableToolbar="true" />
+
+                <MudTable Class="mt-4" Items="@relations">
+                    <ToolBarContent>
+                        <MudText Typo="Typo.h6">Relacija</MudText>
+                    </ToolBarContent>
+
+                    <HeaderContent>
+                        <MudTh>Relacija</MudTh>
+                        <MudTh>Kilometrina</MudTh>
+                        <MudTh>Cena/km</MudTh>
+                        <MudTh>Skupaj</MudTh>
+                    </HeaderContent>
+                    <RowTemplate Context="Main">
+                        <MudTd DataLabel="Relacija">@Main.Name</MudTd>
+                        <MudTd DataLabel="Kilometrina">@Main.Kilometers</MudTd>
+                        <MudTd DataLabel="Cena/km">@Main.KmPrice €</MudTd>
+                        <MudTd DataLabel="Skupaj">@((Main.Kilometers * Main.KmPrice).GetValueOrDefault(0).ToString("0.##")) €</MudTd>
+                    </RowTemplate>
+                </MudTable>
+
+                <MudTable Class="mt-4" Items="@tools">
+                    <ToolBarContent>
+                        <MudText Typo="Typo.h6">Cestnina</MudText>
+                    </ToolBarContent>
+
+                    <HeaderContent>
+                        <MudTh>Količina</MudTh>
+                        <MudTh>Cena/kol</MudTh>
+                        <MudTh>Skupaj</MudTh>
+                    </HeaderContent>
+                    <RowTemplate Context="Main">
+                        <MudTd DataLabel="Količina">@Main.Qty</MudTd>
+                        <MudTd DataLabel="Cena/kol">@Main.QtyPrice €</MudTd>
+                        <MudTd DataLabel="Skupaj">@((Main.Qty * Main.QtyPrice).GetValueOrDefault(0).ToString("0.##")) €</MudTd>
+                    </RowTemplate>
+                </MudTable>
+
+                <MudTable Class="mt-4" Items="@additionalWorks">
+                    <ToolBarContent>
+                        <MudText Typo="Typo.h6">Startnina, nakladanje, razkladanje</MudText>
+                    </ToolBarContent>
+
+                    <HeaderContent>
+                        <MudTh>Količina</MudTh>
+                        <MudTh>Cena/kol</MudTh>
+                        <MudTh>Skupaj</MudTh>
+                    </HeaderContent>
+                    <RowTemplate Context="Main">
+                        <MudTd DataLabel="Količina">@Main.Qty</MudTd>
+                        <MudTd DataLabel="Cena/kol">@Main.QtyPrice €</MudTd>
+                        <MudTd DataLabel="Skupaj">@((Main.Qty * Main.QtyPrice).GetValueOrDefault(0).ToString("0.##")) €</MudTd>
+                    </RowTemplate>
+                </MudTable>
+
+                <MudTable Class="mt-4" Items="@asistances">
+                    <ToolBarContent>
+                        <MudText Typo="Typo.h6">Asistenca</MudText>
+                    </ToolBarContent>
+
+                    <HeaderContent>
+                        <MudTh>Ure</MudTh>
+                        <MudTh>Cena/uro</MudTh>
+                        <MudTh>Skupaj</MudTh>
+                    </HeaderContent>
+                    <RowTemplate Context="Main">
+                        <MudTd DataLabel="Ure">@Main.Hours</MudTd>
+                        <MudTd DataLabel="Cena/uro">@Main.HoursPrice €</MudTd>
+                        <MudTd DataLabel="Skupaj">@((Main.Hours * Main.HoursPrice).GetValueOrDefault(0).ToString("0.##")) €</MudTd>
+                    </RowTemplate>
+                </MudTable>
+
+                <MudTextField @bind-Value="workOrderTransport.Note" Label="Opombe" Variant="Variant.Text"></MudTextField>
+                <MudText Class="mt-3" Typo="Typo.h5">Skupaj: @workOrderTransport.PriceTotal €</MudText>
+
+            </EditForm>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <LoginRedirect></LoginRedirect>
+    </NotAuthorized>
+</AuthorizeView>
+
+
+@code {
+
+    [Parameter]
+    public string woId { get; set; }
+
+    private WorkOrderTransportUI workOrderTransport = new();
+    private List<Asistance> asistances = new();
+    private List<AdditionalWork> additionalWorks = new();
+    private List<Tool> tools = new();
+    private List<Relation> relations = new();
+    private string vehicleTypeName;
+    private bool printShown = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var loggedUser = await sessionStorage.GetItemAsync<LoggedInUserModel>("User");
+        if (loggedUser == null)
+        {
+            return;
+        }
+        workOrderTransport = await workOrderClient.GetWorkOrderTransportAsync(int.Parse(woId));
+        vehicleTypeName = workOrderTransport.VehicleType.Name;
+
+        asistances.Add(new Asistance
+        {
+            Hours = workOrderTransport.AsistanceHours,
+            HoursPrice = workOrderTransport.AsistanceHourPrice
+        });
+
+        additionalWorks.Add(new AdditionalWork
+        {
+            Qty = workOrderTransport.AdditionalWorkQty.GetValueOrDefault(),
+            QtyPrice = workOrderTransport.AdditionalWorkPrice
+        });
+
+        tools.Add(new Tool
+        {
+            Qty = workOrderTransport.ToolsQty.GetValueOrDefault(),
+            QtyPrice = workOrderTransport.ToolsQtyPrice
+        });
+
+        relations.Add(new Relation
+        {
+            Name = workOrderTransport.RelationName,
+            Kilometers = workOrderTransport.RelationKm,
+            KmPrice = workOrderTransport.RelationKmPrice
+        });
+
+        StateHasChanged();
+    }
+
+    protected override async void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender && !printShown)
+        {
+            printShown = true;
+            await jsRuntime.InvokeVoidAsync("printWholePage");
+            NavManager.NavigateTo("/workorderoverview");
+        }
+    }
+
+    public class Relation
+    {
+        public string Name { get; set; }
+        public double? Kilometers { get; set; }
+        public double? KmPrice { get; set; }
+    }
+
+    public class Tool
+    {
+        public int Qty { get; set; }
+        public double? QtyPrice { get; set; }
+    }
+
+    public class AdditionalWork
+    {
+        public int Qty { get; set; }
+        public double? QtyPrice { get; set; }
+    }
+    public class Asistance
+    {
+        public double? Hours { get; set; }
+        public double? HoursPrice { get; set; }
+    }
+}

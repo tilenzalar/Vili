@@ -1,0 +1,794 @@
+﻿@using VilicappAPI
+@using VilicappClient.Models
+@inject Blazored.SessionStorage.ISessionStorageService sessionStorage
+@inject NavigationManager NavManager
+@inject WorkOrderClient workOrderClient
+@inject ISnackbar Snackbar
+@inject IJSRuntime jsRuntime
+@using System.Globalization
+
+<AuthorizeView Context="neki">
+    <Authorized>
+        <div class="flex flex-col md:flex-row">
+            <div class="flex-1" style="max-width:700px">
+                <EditForm Model="workOrderRepair" OnValidSubmit="OnValidSubmit">
+                    <DataAnnotationsValidator />
+                    <MudTextField @bind-Value="workOrderRepair.Client" For="@(() => workOrderRepair.Client)" Label="Naročnik" Variant="Variant.Text" ReadOnly="isInLookupMode"></MudTextField>
+                    <MudTextField @bind-Value="workOrderRepair.TaxNumber" For="@(() => workOrderRepair.TaxNumber)" Label="Davčna številka" Variant="Variant.Text" ReadOnly="isInLookupMode"></MudTextField>
+                    <MudTextField @bind-Value="workOrderRepair.Contact" For="@(() => workOrderRepair.Contact)" Label="Kontakt" Variant="Variant.Text" ReadOnly="isInLookupMode"></MudTextField>
+                    <MudTextField @bind-Value="workOrderRepair.ForkliftName" For="@(() => workOrderRepair.ForkliftName)" Label="Tip viličarja/stroja" Variant="Variant.Text" ReadOnly="isInLookupMode"></MudTextField>
+                    <MudDatePicker Label="Datum prevzema" DateFormat="dd.MM.yyyy" @bind-Date="workOrderRepair.Recieved" ReadOnly="isInLookupMode" DisableToolbar="true" />
+                    <MudDatePicker Label="Datum končnega dela" DateFormat="dd.MM.yyyy" @bind-Date="workOrderRepair.EndWork" ReadOnly="isInLookupMode" DisableToolbar="true" />
+
+                    <MudSelect T="OrderTypeUI" @bind-Value="@orderType" Label="Vrsta naročila" ToStringFunc="@converter" Variant="Variant.Outlined" ReadOnly="isInLookupMode" OffsetY="true">
+
+                        @foreach (var orderTypeMoj in orderTypeList)
+                        {
+                            <MudSelectItem Value="@(new OrderTypeUI() { Id = orderTypeMoj.Id, Name=orderTypeMoj.Name})" />
+                        }
+
+                    </MudSelect>
+
+                    <MudTextField @bind-Value="workOrderRepair.Description" Label="Opis popravila" ReadOnly="isInLookupMode" Variant="Variant.Text"></MudTextField>
+
+                    <MudTable Class="mt-4" Items="@workTimeConsumptionList" CanCancelEdit="true" SortLabel="Sortiraj po" RowEditPreview="BackupItem" ReadOnly="isInLookupMode" RowEditCancel="ResetItemToOriginalValues">
+                        <ToolBarContent>
+                            <MudText Typo="Typo.h6">Poraba delovnega časa</MudText>
+                            <MudSpacer />
+                            @if (!isInLookupMode)
+                            {
+                                <MudButton Color="Color.Secondary" Variant="Variant.Filled" OnClick="OpenWTCDialog" Class="ml-auto">Dodaj</MudButton>
+                            }
+
+                        </ToolBarContent>
+
+                        <HeaderContent>
+                            <MudTh>Vrsta dela</MudTh>
+                            <MudTh>Specifikacija dela</MudTh>
+                            <MudTh>Ure</MudTh>
+                            @if (isUserAdmin)
+                            {
+                                <MudTh>Cena</MudTh>
+                                <MudTh>Skupaj</MudTh>
+                            }
+
+                            @if (!isInLookupMode)
+                            {
+                                <MudTh></MudTh>
+                            }
+                        </HeaderContent>
+                        <RowTemplate Context="Main">
+                            <MudTd DataLabel="Vrsta dela">@Main.WorkTimeType.Name</MudTd>
+                            <MudTd DataLabel="Specifikacija dela">@Main.Description</MudTd>
+                            <MudTd DataLabel="Ure">@(Main.Hours.GetValueOrDefault(0).ToString(new CultureInfo("sl-SI")))</MudTd>
+                            @if (isUserAdmin)
+                            {
+                                <MudTd DataLabel="Cena">@(Main.Price.GetValueOrDefault(0).ToString(new CultureInfo("sl-SI"))) €</MudTd>
+                                <MudTd DataLabel="Skupaj">@((Main.Hours * Main.Price).GetValueOrDefault(0).ToString(new CultureInfo("sl-SI"))) €</MudTd>
+                            }
+
+                            @if (!isInLookupMode)
+                            {
+                                <MudTd DataLabel="">
+                                    <MudFab @onclick="@(()=>Delete(@Main))" Color="Color.Error" Icon="@Icons.Material.Filled.Delete" Size="Size.Small" IconSize="Size.Small" />
+                                </MudTd>
+                            }
+                        </RowTemplate>
+                        <RowEditingTemplate Context="Edit">
+                            <MudSelect T="WorkTimeTypeUI" @bind-Value="@Edit.WorkTimeType" Label="Vrsta dela" ToStringFunc="@converterWT" Variant="Variant.Outlined" OffsetY="true">
+                                @foreach (var wt in workTimeTypeList)
+                                {
+                                    <MudSelectItem Value="@(new WorkTimeTypeUI() { Id = wt.Id, Name=wt.Name})" />
+
+                                }
+                            </MudSelect>
+                            <MudTd DataLabel="Description">
+                                <MudTextField @bind-Value="@Edit.Description" Required />
+                            </MudTd>
+                            <MudTd DataLabel="Hours">
+                                <MudNumericField @bind-Value="@Edit.Hours" Required Min="0" />
+                            </MudTd>
+                            @if (isUserAdmin)
+                            {
+                                <MudTd DataLabel="Price">
+                                    <MudNumericField @bind-Value="@Edit.Price" Required Min="0" />
+                                </MudTd>
+                                <MudTd DataLabel="PriceTotal">
+                                    <MudTextField Value="@((Edit.Hours * Edit.Price).GetValueOrDefault(0))" ReadOnly="true" />
+                                </MudTd>
+                            }
+                        </RowEditingTemplate>
+                    </MudTable>
+
+                    <MudTable Class="mt-4" Items="@materialConsumptionList" CanCancelEdit="true" SortLabel="Sortiraj po" ReadOnly="isInLookupMode" RowEditPreview="BackupItemMaterialConsumption" RowEditCancel="ResetMaterialEditItem">
+                        <ToolBarContent>
+                            <MudText Typo="Typo.h6">Poraba materiala</MudText>
+                            <MudSpacer />
+                            @if (!isInLookupMode)
+                            {
+                                <MudButton Color="Color.Secondary" Variant="Variant.Filled" OnClick="OpenMCDialog" Class="ml-auto">Dodaj</MudButton>
+                            }
+                        </ToolBarContent>
+
+                        <HeaderContent>
+                            <MudTh>Material</MudTh>
+                            <MudTh>Količina</MudTh>
+                            @if (isUserAdmin)
+                            {
+                                <MudTh>Cena</MudTh>
+                                <MudTh>Skupaj</MudTh>
+                            }
+                            @if (!isInLookupMode)
+                            {
+                                <MudTh></MudTh>
+                            }
+                        </HeaderContent>
+                        <RowTemplate Context="Main">
+                            <MudTd DataLabel="Material">@Main.Material</MudTd>
+                            <MudTd DataLabel="Količina">@Main.Quantity</MudTd>
+                            @if (isUserAdmin)
+                            {
+                                <MudTd DataLabel="Cena">@Main.Price.GetValueOrDefault(0) €</MudTd>
+                                <MudTd DataLabel="Skupaj">@((Main.Quantity * Main.Price).GetValueOrDefault(0).ToString("0.##")) €</MudTd>
+                            }
+                            @if (!isInLookupMode)
+                            {
+                                <MudTd DataLabel="">
+                                    <MudFab @onclick="@(() => DeleteMC(@Main))" Color="Color.Error" Icon="@Icons.Material.Filled.Delete" Size="Size.Small" IconSize="Size.Small" />
+                                </MudTd>
+                            }
+                        </RowTemplate>
+                        <RowEditingTemplate Context="Edit">
+                            <MudTd DataLabel="Description">
+                                <MudTextField @bind-Value="@Edit.Material" Required />
+                            </MudTd>
+                            <MudTd DataLabel="Hours">
+                                <MudNumericField @bind-Value="@Edit.Quantity" Required Min="0" />
+                            </MudTd>
+                            @if (isUserAdmin)
+                            {
+                                <MudTd DataLabel="Price">
+                                    <MudNumericField @bind-Value="@Edit.Price" Required Min="0" />
+                                </MudTd>
+                                <MudTd DataLabel="PriceTotal">
+                                    <MudTextField Value="@((Edit.Quantity.Value * Edit.Price.Value).ToString("0.##"))" ReadOnly="true" />
+                                </MudTd>
+                            }
+                        </RowEditingTemplate>
+                    </MudTable>
+
+                    <MudTable Class="mt-4" Items="@transportationList" CanCancelEdit="true" SortLabel="Sortiraj po" ReadOnly="isInLookupMode" RowEditPreview="BackupItemTransportation" RowEditCancel="ResetTransportationEditItem">
+                        <ToolBarContent>
+                            <MudText Typo="Typo.h6">Opravljeni prevozi</MudText>
+                            <MudSpacer />
+                            @if (!isInLookupMode)
+                            {
+                                <MudButton Color="Color.Secondary" Variant="Variant.Filled" OnClick="OpenTransportationDialog" Class="ml-auto">Dodaj</MudButton>
+                            }
+                        </ToolBarContent>
+
+                        <HeaderContent>
+                            <MudTh>Relacija</MudTh>
+                            <MudTh>Kilometrina</MudTh>
+                            @if (isUserAdmin)
+                            {
+                                <MudTh>Cena</MudTh>
+                                <MudTh>Skupaj</MudTh>
+                            }
+                            @if (!isInLookupMode)
+                            {
+                                <MudTh></MudTh>
+                            }
+                        </HeaderContent>
+                        <RowTemplate Context="Main">
+                            <MudTd DataLabel="Relacija">@Main.Relation</MudTd>
+                            <MudTd DataLabel="Kilometrina">@Main.Kilometers</MudTd>
+                            @if (isUserAdmin)
+                            {
+                                <MudTd DataLabel="Cena">@Main.Price.GetValueOrDefault(0) €</MudTd>
+                                <MudTd DataLabel="Skupaj">@((Main.Kilometers.GetValueOrDefault(0) * Main.Price.GetValueOrDefault(0)).ToString("0.##")) €</MudTd>
+                            }
+                            @if (!isInLookupMode)
+                            {
+                                <MudTd DataLabel="">
+                                    <MudFab @onclick="@(() => DeleteTransportation(@Main))" Color="Color.Error" Icon="@Icons.Material.Filled.Delete" Size="Size.Small" IconSize="Size.Small" />
+                                </MudTd>
+                            }
+                        </RowTemplate>
+                        <RowEditingTemplate Context="Edit">
+                            <MudTd DataLabel="Description">
+                                <MudTextField @bind-Value="@Edit.Relation" Required />
+                            </MudTd>
+                            <MudTd DataLabel="Hours">
+                                <MudNumericField @bind-Value="@Edit.Kilometers" Required Min="0" />
+                            </MudTd>
+                            @if (isUserAdmin)
+                            {
+                                <MudTd DataLabel="Price">
+                                    <MudNumericField @bind-Value="@Edit.Price" Required Min="0" />
+                                </MudTd>
+                                <MudTd DataLabel="PriceTotal">
+                                    <MudTextField Value="@((Edit.Kilometers * Edit.Price).GetValueOrDefault(0).ToString("0.##"))" ReadOnly="true" />
+                                </MudTd>
+                            }
+                        </RowEditingTemplate>
+                    </MudTable>
+
+                    <MudTextField @bind-Value="workOrderRepair.Note" Label="Opombe" Variant="Variant.Text" ReadOnly="isInLookupMode"></MudTextField>
+                    @if (!isInLookupMode)
+                    {
+                        <MudCardActions>
+                            <MudButton OnClick="SaveWorkOrder" ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Success">Shrani</MudButton>
+                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Class="ml-auto">Zaključi</MudButton>
+                        </MudCardActions>
+                    }
+                </EditForm>
+
+            </div>
+            <div class="flex flex-col md:ml-6">
+                <div>
+                    <MudText Typo="Typo.h6" Class="mb-2">Dodatne kontrole</MudText>
+                    @if (isUserAdmin && (isInEditMode || isInLookupMode))
+                    {
+                        <MudButton StartIcon="@Icons.Material.Filled.Print" Color="Color.Primary" Variant="Variant.Filled" OnClick="PrintPage" Class="ml-auto">Printaj</MudButton>
+                    }
+                </div>
+                <div class="mt-5">
+
+                    @if (isUserAdmin)
+                    {
+                        <InputFile id="fileInput112" OnChange="UploadFiles" hidden accept=".pdf" />
+                        @if (attachment.BinaryData != null)
+                        {
+                            <MudButton StartIcon="@Icons.Material.Filled.FileDownload"
+                                       HtmlTag="label"
+                                       Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       OnClick="DownloadAttachment">
+                                Prenesi priponko
+                            </MudButton>
+                            <MudFab @onclick="@(()=>DeleteAttachment())" Color="Color.Error" Icon="@Icons.Material.Filled.Delete" Size="Size.Small" IconSize="Size.Small" />
+                        }
+                        else if (!isInLookupMode)
+                        {
+                            <MudButton HtmlTag="label"
+                                       Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       StartIcon="@Icons.Material.Filled.AttachFile"
+                                       for="fileInput112">
+                                Dodaj priponko
+                            </MudButton>
+                        }
+                    }
+
+                </div>
+
+                <div class="mt-5">
+                    @if (!isInLookupMode)
+                    {
+                        <InputFile id="fileInput" OnChange="UploadImages" hidden multiple accept=".jpg, .jpeg, .png" />
+                        <MudButton HtmlTag="label"
+                                   Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Filled.Image"
+                                   for="fileInput">
+                            Dodaj slike
+                        </MudButton>
+                    }
+
+                    @if (imagesList.Any())
+                    {
+                        <div>
+                            @foreach (var imagea in imagesList)
+                            {
+                                var base64 = Convert.ToBase64String(imagea.BinaryData);
+                                var imgSrc = String.Format("data:image/png;base64,{0}", base64);
+                                <div class="flex flex-row">
+                                    <img class="w-full h-48 object-cover mt-2 border border-black" src="@imgSrc" alt="@imagea.Name" />
+                                    <div class="flex flex-col ml-4">
+                                        <MudFab @onclick="@(()=>DownloadImage(imagea))" Color="Color.Success" Icon="@Icons.Material.Filled.CloudDownload" Size="Size.Small" IconSize="Size.Small" />
+                                        <MudFab @onclick="@(()=>DeleteImage(imagea))" Color="Color.Error" Icon="@Icons.Material.Filled.Delete" Size="Size.Small" IconSize="Size.Small" Class="mt-4" />
+                                    </div>
+
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <MudDialog @bind-IsVisible="visibleWTC">
+            <TitleContent>
+                <MudText Typo="Typo.h6">
+                    <MudIcon Icon="@Icons.Material.Filled.Edit" Class="mr-3" /> Nov zapis
+                </MudText>
+            </TitleContent>
+            <DialogContent>
+                <MudSelect T="WorkTimeTypeUI" @bind-Value="@workTimeType" Label="Vrsta dela" ToStringFunc="@converterWT" Variant="Variant.Outlined" OffsetY="true">
+
+                    @foreach (var wt in workTimeTypeList)
+                    {
+                        <MudSelectItem Value="@(new WorkTimeTypeUI() { Id = wt.Id, Name=wt.Name})" />
+                    }
+
+                </MudSelect>
+                <MudTextField @bind-Value="@newWTC.Description" Label="Specifikacija dela" />
+                <MudNumericField @bind-Value="@newWTC.Hours" Label="Ure" />
+                @if (isUserAdmin)
+                {
+                    <MudNumericField @bind-Value="@newWTC.Price" Label="Cena" />
+                    <MudTextField Value="@((newWTC.Hours * newWTC.Price).GetValueOrDefault(0))" Label="Skupaj" ReadOnly="true" />
+                }
+            </DialogContent>
+            <DialogActions>
+                <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="CancelWTCDialog" Class="px-10">Prekliči</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="SaveWTCDialog" Class="px-10">Dodaj</MudButton>
+            </DialogActions>
+        </MudDialog>
+
+        <MudDialog @bind-IsVisible="visibleMC">
+            <TitleContent>
+                <MudText Typo="Typo.h6">
+                    <MudIcon Icon="@Icons.Material.Filled.Edit" Class="mr-3" /> Nov zapis
+                </MudText>
+            </TitleContent>
+            <DialogContent>
+                <MudTextField @bind-Value="@newMC.Material" Label="Material" />
+                <MudNumericField @bind-Value="@newMC.Quantity" Label="Količina" />
+                @if (isUserAdmin)
+                {
+                    <MudNumericField @bind-Value="@newMC.Price" Label="Cena" />
+                    <MudTextField Value="@((newMC.Quantity * newMC.Price).GetValueOrDefault(0).ToString("0.##"))" Label="Skupaj" ReadOnly="true" />
+                }
+            </DialogContent>
+            <DialogActions>
+                <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="CancelMCDialog" Class="px-10">Prekliči</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="SaveMCDialog" Class="px-10">Dodaj</MudButton>
+            </DialogActions>
+        </MudDialog>
+
+        <MudDialog @bind-IsVisible="visibleTransportation">
+            <TitleContent>
+                <MudText Typo="Typo.h6">
+                    <MudIcon Icon="@Icons.Material.Filled.Edit" Class="mr-3" /> Nov zapis
+                </MudText>
+            </TitleContent>
+            <DialogContent>
+                <MudTextField @bind-Value="@newTransportation.Relation" Label="Relacija" />
+                <MudNumericField @bind-Value="@newTransportation.Kilometers" Label="Količina" />
+                @if (isUserAdmin)
+                {
+                    <MudNumericField @bind-Value="@newTransportation.Price" Label="Cena" />
+                    <MudTextField Value="@((newTransportation.Kilometers * newTransportation.Price).GetValueOrDefault(0).ToString("0.##"))" Label="Skupaj" ReadOnly="true" />
+                }
+            </DialogContent>
+            <DialogActions>
+                <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="CancelTransportationDialog" Class="px-10">Prekliči</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="SaveTransportationDialog" Class="px-10">Dodaj</MudButton>
+            </DialogActions>
+        </MudDialog>
+
+        <MudDialog @bind-IsVisible="visibleDialogDelete">
+            <TitleContent>
+                <MudText Typo="Typo.h6">
+                    <MudIcon Icon="@Icons.Material.Filled.Delete" Class="mr-3" /> Brisanje
+                </MudText>
+            </TitleContent>
+            <DialogContent>
+                Ali ste prepričani, da želite izbrisati priponko?
+            </DialogContent>
+            <DialogActions>
+                <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="CancelDelete" Class="px-10">Prekliči</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="ConfirmDelete" Class="px-10">Potrdi</MudButton>
+            </DialogActions>
+        </MudDialog>
+    </Authorized>
+    <NotAuthorized>
+        <LoginRedirect></LoginRedirect>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+
+    private WorkOrderRepairUI workOrderRepair = new();
+
+    private List<OrderTypeUI> orderTypeList = new();
+    private OrderTypeUI orderType = new();
+
+    private List<WorkTimeTypeUI> workTimeTypeList = new();
+    private WorkTimeTypeUI workTimeType = new();
+
+    private List<WorkTimeConsumptionUI> workTimeConsumptionList = new();
+    private WorkTimeConsumptionUI elementBeforeEdit;
+    private WorkTimeConsumptionUI newWTC = new();
+    private bool visibleWTC = false;
+
+    private List<MaterialConsumptionUI> materialConsumptionList = new();
+    private MaterialConsumptionUI mcBeforeEdit;
+    private MaterialConsumptionUI newMC = new();
+    private bool visibleMC = false;
+
+    private List<TransportationUI> transportationList = new();
+    private TransportationUI tranportationBeforeEdit;
+    private TransportationUI newTransportation = new();
+    private bool visibleTransportation = false;
+
+    private bool isInLookupMode = false;
+    private bool isUserAdmin = false;
+    private bool saveWO = false;
+    private LoggedInUserModel loggedUser;
+    private bool isInEditMode = false;
+    private AttachmentUI attachment = new();
+    private bool deleteAttachment = false;
+    private int oldAttachmentId = 0;
+    private bool visibleDialogDelete = false;
+    private List<ImageUI> imagesList = new();
+
+    [Parameter]
+    public WorkOrderRepairUI lookupWOR { get; set; }
+
+    [Parameter]
+    public bool editMode { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        loggedUser = await sessionStorage.GetItemAsync<LoggedInUserModel>("User");
+        if (loggedUser == null)
+        {
+            return;
+        }
+        orderTypeList = (await workOrderClient.GetAllWorkOrderTypesAsync()).ToList();
+        workTimeTypeList = (await workOrderClient.GetAllWorkTimeTypesAsync()).ToList();
+        newWTC.Description = "";
+        newWTC.Hours = 0;
+        newWTC.Price = 0;
+        newWTC.PriceTotal = 0;
+        loggedUser = await sessionStorage.GetItemAsync<LoggedInUserModel>("User");
+        isUserAdmin = loggedUser.RoleId == (int)UserRole.Admin;
+
+    }
+
+    protected override async void OnParametersSet()
+    {
+        if (lookupWOR != null)
+        {
+            workOrderRepair = lookupWOR;
+            workTimeConsumptionList = lookupWOR.WorkTimeConsumptions.ToList();
+            materialConsumptionList = lookupWOR.MaterialConsumptions.ToList();
+            transportationList = lookupWOR.Transportations.ToList();
+            orderType = lookupWOR.OrderType;
+            isInLookupMode = !editMode;
+            if (workOrderRepair.HasAttachment)
+            {
+                attachment = await workOrderClient.GetAttachmentAsync(workOrderRepair.Id);
+            }
+            imagesList = (await workOrderClient.GetImagesAsync(workOrderRepair.Id)).ToList();
+
+        }
+        isInEditMode = editMode;
+        StateHasChanged();
+    }
+
+    private void BackupItem(object element)
+    {
+        elementBeforeEdit = new()
+        {
+            Description = ((WorkTimeConsumptionUI)element).Description,
+            Hours = ((WorkTimeConsumptionUI)element).Hours,
+            Price = ((WorkTimeConsumptionUI)element).Price,
+            PriceTotal = ((WorkTimeConsumptionUI)element).PriceTotal,
+            WorkTimeType = ((WorkTimeConsumptionUI)element).WorkTimeType,
+        };
+    }
+
+    private void BackupItemMaterialConsumption(object element)
+    {
+        mcBeforeEdit = new()
+        {
+            Material = ((MaterialConsumptionUI)element).Material,
+            Quantity = ((MaterialConsumptionUI)element).Quantity,
+            Price = ((MaterialConsumptionUI)element).Price,
+            PriceTotal = ((MaterialConsumptionUI)element).PriceTotal
+        };
+    }
+    private void BackupItemTransportation(object element)
+    {
+        tranportationBeforeEdit = new()
+        {
+            Relation = ((TransportationUI)element).Relation,
+            Kilometers = ((TransportationUI)element).Kilometers,
+            Price = ((TransportationUI)element).Price,
+            PriceTotal = ((TransportationUI)element).PriceTotal
+        };
+    }
+
+    private void ResetItemToOriginalValues(object element)
+    {
+        ((WorkTimeConsumptionUI)element).Description = elementBeforeEdit.Description;
+        ((WorkTimeConsumptionUI)element).Hours = elementBeforeEdit.Hours;
+        ((WorkTimeConsumptionUI)element).Price = elementBeforeEdit.Price;
+        ((WorkTimeConsumptionUI)element).PriceTotal = elementBeforeEdit.PriceTotal;
+        ((WorkTimeConsumptionUI)element).WorkTimeType = elementBeforeEdit.WorkTimeType;
+    }
+
+    private void ResetMaterialEditItem(object element)
+    {
+        ((MaterialConsumptionUI)element).Material = mcBeforeEdit.Material;
+        ((MaterialConsumptionUI)element).Quantity = mcBeforeEdit.Quantity;
+        ((MaterialConsumptionUI)element).Price = mcBeforeEdit.Price;
+        ((MaterialConsumptionUI)element).PriceTotal = mcBeforeEdit.PriceTotal;
+    }
+    private void ResetTransportationEditItem(object element)
+    {
+        ((TransportationUI)element).Relation = tranportationBeforeEdit.Relation;
+        ((TransportationUI)element).Kilometers = tranportationBeforeEdit.Kilometers;
+        ((TransportationUI)element).Price = tranportationBeforeEdit.Price;
+        ((TransportationUI)element).PriceTotal = tranportationBeforeEdit.PriceTotal;
+    }
+
+    private async void OnValidSubmit()
+    {
+        workOrderRepair.MaterialConsumptions = materialConsumptionList;
+        workOrderRepair.Transportations = transportationList;
+        workOrderRepair.WorkTimeConsumptions = workTimeConsumptionList;
+        workOrderRepair.OrderTypeId = orderType.Id;
+        workOrderRepair.ModifiedByUserId = loggedUser.Id;
+        if (isInEditMode)
+        {
+            var woo = new WorkOrderOverviewUI
+            {
+                Id = workOrderRepair.Id,
+                WorkOrderType = "Servis"
+            };
+            await workOrderClient.DeleteWorkOrderAsync(woo);
+        }
+        if (saveWO)
+        {
+            workOrderRepair.WorkOrderStatusId = (int)WorkOrderStatusEnum.Saved;
+        }
+        else
+        {
+            workOrderRepair.WorkOrderStatusId = isUserAdmin ? (int)WorkOrderStatusEnum.Finished : (int)WorkOrderStatusEnum.ToConfirm;
+        }
+
+        if (deleteAttachment && oldAttachmentId > 0)
+        {
+            var result = await workOrderClient.DeleteAttachemntAsync(oldAttachmentId);
+        }
+
+        var woId = await workOrderClient.AddWorkOrderRepairAsync(workOrderRepair);
+        if (attachment.BinaryData != null)
+        {
+            attachment.WorkOrderRepairId = woId;
+            await workOrderClient.AddAttachmentAsync(attachment);
+        }
+        deleteAttachment = false;
+
+        if (imagesList.Any() && workOrderRepair.Id != 0)
+        {
+            foreach (var img in imagesList)
+            {
+                img.WorkOrderRepairId = woId;
+            }
+            await workOrderClient.DeleteImagesAsync(workOrderRepair.Id);
+            await workOrderClient.AddImagesAsync(imagesList);
+        }
+        if (woId > 0)
+        {
+            workOrderRepair.Id = woId;
+            Snackbar.Add("Zapis uspešno dodan", Severity.Success);
+            NavManager.NavigateTo("/workorderoverview");
+        }
+    }
+    private void SaveWorkOrder()
+    {
+        saveWO = true;
+    }
+
+    private void OpenWTCDialog()
+    {
+        visibleWTC = true;
+    }
+
+    private void OpenMCDialog()
+    {
+        visibleMC = true;
+    }
+    private void OpenTransportationDialog()
+    {
+        visibleTransportation = true;
+    }
+    private void SaveWTCDialog()
+    {
+        var tmp = new WorkTimeConsumptionUI
+        {
+            WorkTimeType = new WorkTimeTypeUI { Id = workTimeType.Id, Name = workTimeType.Name },
+            Description = newWTC.Description,
+            Hours = newWTC.Hours,
+            Price = newWTC.Price,
+            PriceTotal = newWTC.PriceTotal
+        };
+        workTimeConsumptionList.Add(tmp);
+        newWTC.Description = "";
+        newWTC.Hours = 0;
+        newWTC.Price = 0;
+        newWTC.PriceTotal = 0;
+        workTimeType.Id = 0;
+        workTimeType.Name = "";
+        visibleWTC = false;
+    }
+
+    private void SaveMCDialog()
+    {
+        var tmp = new MaterialConsumptionUI
+        {
+            Material = newMC.Material,
+            Quantity = newMC.Quantity,
+            Price = newMC.Price,
+            PriceTotal = newMC.PriceTotal
+        };
+        materialConsumptionList.Add(tmp);
+        newMC.Material = "";
+        newMC.Quantity = 0;
+        newMC.Price = 0;
+        newMC.PriceTotal = 0;
+        visibleMC = false;
+    }
+
+    private void SaveTransportationDialog()
+    {
+        var tmp = new TransportationUI
+        {
+            Relation = newTransportation.Relation,
+            Kilometers = newTransportation.Kilometers,
+            Price = newTransportation.Price,
+            PriceTotal = newTransportation.PriceTotal
+        };
+        transportationList.Add(tmp);
+        newTransportation.Relation = "";
+        newTransportation.Kilometers = 0;
+        newTransportation.Price = 0;
+        newTransportation.PriceTotal = 0;
+        visibleTransportation = false;
+    }
+
+    private void CancelWTCDialog()
+    {
+        newWTC.Description = "";
+        newWTC.Hours = 0;
+        newWTC.Price = 0;
+        newWTC.PriceTotal = 0;
+        workTimeType.Id = 0;
+        workTimeType.Name = "";
+        visibleWTC = false;
+    }
+
+    private void CancelMCDialog()
+    {
+        newMC.Material = "";
+        newMC.Quantity = 0;
+        newMC.Price = 0;
+        newMC.PriceTotal = 0;
+        visibleMC = false;
+    }
+
+    private void CancelTransportationDialog()
+    {
+        newTransportation.Relation = "";
+        newTransportation.Kilometers = 0;
+        newTransportation.Price = 0;
+        newTransportation.PriceTotal = 0;
+        visibleTransportation = false;
+    }
+
+    private void Delete(WorkTimeConsumptionUI workTime)
+    {
+        var removedItem = workTimeConsumptionList.Where(
+            note => note.Description == workTime.Description && note.Price == workTime.Price && note.PriceTotal == workTime.PriceTotal).FirstOrDefault();
+        workTimeConsumptionList.Remove(removedItem);
+    }
+    private void DeleteMC(MaterialConsumptionUI material)
+    {
+        var removedItem = materialConsumptionList.Where(note => note.Material == material.Material && note.Price == material.Price && note.PriceTotal == material.PriceTotal).FirstOrDefault();
+        materialConsumptionList.Remove(removedItem);
+    }
+    private void DeleteTransportation(TransportationUI transportation)
+    {
+        var removedItem = transportationList.Where(
+            note => note.Relation == transportation.Relation && note.Price == transportation.Price && note.PriceTotal == transportation.PriceTotal).FirstOrDefault();
+        transportationList.Remove(removedItem);
+    }
+
+    private async void UploadFiles(InputFileChangeEventArgs e)
+    {
+
+        System.IO.MemoryStream ms = new();
+        await e.File.OpenReadStream(5000000).CopyToAsync(ms);
+
+        var neki = ms.ToArray();
+        attachment = new AttachmentUI
+        {
+            WorkOrderRepairId = workOrderRepair.Id != 0 ? workOrderRepair.Id : 0,
+            Name = e.File.Name,
+            BinaryData = neki
+        };
+        StateHasChanged();
+    }
+
+    private async void UploadImages(InputFileChangeEventArgs e)
+    {
+        System.IO.MemoryStream ms;
+        foreach (var f in e.GetMultipleFiles())
+        {
+            ms = new();
+            await f.OpenReadStream(5000000).CopyToAsync(ms);
+
+            var neki = ms.ToArray();
+            var img = new ImageUI
+            {
+                //WorkOrderRepairId = workOrderRepair.Id != 0 ? workOrderRepair.Id : 0,
+                Name = f.Name,
+                BinaryData = neki
+            };
+            imagesList.Add(img);
+        }
+
+
+        StateHasChanged();
+    }
+
+    private async void DownloadAttachment()
+    {
+        await jsRuntime.InvokeVoidAsync("saveAsFile", attachment.Name, attachment.BinaryData);
+    }
+
+    private void DeleteAttachment()
+    {
+        visibleDialogDelete = true;
+    }
+
+    private void DeleteImage(ImageUI image)
+    {
+        imagesList.Remove(image);
+        StateHasChanged();
+    }
+
+    private async void DownloadImage(ImageUI image)
+    {
+        await jsRuntime.InvokeVoidAsync("saveAsPngFile", image.Name, image.BinaryData);
+    }
+
+    public static byte[] ToByteArray(System.IO.Stream stream)
+    {
+        stream.Position = 0;
+        byte[] buffer = new byte[stream.Length];
+        for (int totalBytesCopied = 0; totalBytesCopied < stream.Length;)
+            totalBytesCopied += stream.Read(buffer, totalBytesCopied, Convert.ToInt32(stream.Length) - totalBytesCopied);
+        return buffer;
+    }
+
+    private void PrintPage()
+    {
+        NavManager.NavigateTo("/printrepair/" + workOrderRepair.Id);
+    }
+
+    private void CancelDelete()
+    {
+        visibleDialogDelete = false;
+    }
+
+    private void ConfirmDelete()
+    {
+
+        deleteAttachment = true;
+        oldAttachmentId = attachment.Id;
+        attachment.Id = 0;
+        attachment.BinaryData = null;
+        visibleDialogDelete = false;
+        StateHasChanged();
+    }
+
+    Func<OrderTypeUI, string> converter = p => p?.Name;
+    Func<WorkTimeTypeUI, string> converterWT = p => p?.Name;
+}

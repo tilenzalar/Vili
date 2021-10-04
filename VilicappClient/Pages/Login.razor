@@ -1,0 +1,89 @@
+﻿@layout LoginLayout
+@page "/"
+@using VilicappAPI
+@using VilicappClient.BusinessLogic
+@inject UsersClient usersclient
+@inject Blazored.SessionStorage.ISessionStorageService sessionStorage
+@inject NavigationManager NavManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+@if (loading)
+{
+    <div class="spinner" style="margin-top: 300px"></div>
+}
+else
+{
+    <div class="font-sans">
+        <div class="relative min-h-screen flex flex-col sm:justify-center items-center bg-gray-100 ">
+            <div class="relative sm:max-w-sm w-full">
+                <div class="card bg-indigo-600 shadow-lg  w-full h-full rounded-3xl absolute  transform -rotate-6"></div>
+                <div class="card bg-purple-600 shadow-lg  w-full h-full rounded-3xl absolute  transform rotate-6"></div>
+                <div class="relative w-full rounded-3xl  px-6 py-4 bg-gray-100 shadow-md">
+                    <label for="" class="block mt-3 text-sm text-gray-700 text-center font-semibold">
+                        Prijava v sistem VilicApp
+                    </label>
+                    <EditForm Model="@user" class="mt-10" OnValidSubmit="@ValidateUser">
+
+                        <div>
+                            <input type="text" @bind="user.UserName" placeholder=" Uporabniško ime" class="mt-1 block w-full border-none bg-gray-100 h-11 rounded-xl shadow-lg hover:bg-blue-100 focus:bg-blue-100 focus:ring-0">
+                        </div>
+
+                        <div class="mt-7">
+                            <input type="password" @bind="user.Password" placeholder=" Geslo" class="mt-1 block w-full border-none bg-gray-100 h-11 rounded-xl shadow-lg hover:bg-blue-100 focus:bg-blue-100 focus:ring-0">
+                        </div>
+                        @if (LoginMesssage != "")
+                        {
+                            <div class="col-12 row mt-2" style="text-align:left; font-weight:bold; color: red">
+                                <span class="col-12">@LoginMesssage</span>
+                            </div>
+                        }
+
+                        <div class="mt-5">
+                            <button type="submit" class="bg-purple-600 w-full py-3 rounded-xl text-white shadow-xl hover:shadow-inner focus:outline-none transition duration-500 ease-in-out  transform hover:-translate-x hover:scale-105">
+                                Prijava
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+}
+
+
+@code {
+
+    private LoginRequestUserModel user;
+    public string LoginMesssage { get; set; }
+    private bool loading = false;
+
+    protected override Task OnInitializedAsync()
+    {
+        user = new LoginRequestUserModel();
+
+        return base.OnInitializedAsync();
+    }
+
+    private async void ValidateUser()
+    {
+        loading = true;
+        var loggedInUserModel = await usersclient.LoginAsync(user);
+        if (loggedInUserModel.UserName == "") //failes login
+        {
+            LoginMesssage = "Napačno uporabniško ime ali geslo";
+            loading = false;
+            StateHasChanged();
+        }
+        else
+        {
+            await sessionStorage.SetItemAsync("User", loggedInUserModel);
+            ((CustomAuthenticationStateProvider)AuthenticationStateProvider).MarkUserAsAuthenticated(loggedInUserModel.UserName);
+
+            NavManager.NavigateTo("/workorderoverview");
+        }
+
+    }
+}
+

@@ -1,0 +1,241 @@
+﻿@using VilicappAPI
+@using VilicappClient.Models
+@inject WorkOrderClient workOrderClient
+@inject Blazored.SessionStorage.ISessionStorageService sessionStorage
+@inject ISnackbar Snackbar
+@page "/workorderoverview"
+
+<AuthorizeView Context="neki">
+    <Authorized>
+        <div style="max-width: 1000px">
+            @if (workOrderRent == null && workOrderRepair == null && workOrderTransport == null)
+            {
+                <MudTable Items="@workorderList" Filter="new Func<WorkOrderOverviewUI,bool>(FilterFunc1)">
+                    <ToolBarContent>
+                        <MudText Typo="Typo.h6">Pregled delovnih nalogov</MudText>
+                        <MudSpacer />
+                        <MudTextField @bind-Value="searchString" Placeholder="Išči" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0"></MudTextField>
+                    </ToolBarContent>
+                    <HeaderContent>
+                        <MudTh><MudTableSortLabel SortBy="new Func<WorkOrderOverviewUI, object>(x=>x.WorkOrderType)">Tip naloga</MudTableSortLabel></MudTh>
+                        <MudTh><MudTableSortLabel SortBy="new Func<WorkOrderOverviewUI, object>(x=>x.Company)">Podjetje</MudTableSortLabel></MudTh>
+                        <MudTh><MudTableSortLabel InitialDirection="SortDirection.Descending" SortBy="new Func<WorkOrderOverviewUI, object>(x=>x.DateModified)">Datum</MudTableSortLabel></MudTh>
+                        @if (isUserAdmin)
+                            {
+                            <MudTh><MudTableSortLabel SortBy="new Func<WorkOrderOverviewUI, object>(x=>x.PriceTotal)">Cena</MudTableSortLabel></MudTh>
+                            <MudTh><MudTableSortLabel SortBy="new Func<WorkOrderOverviewUI, object>(x=>x.ModifiedByUserName)">Vpisal/a</MudTableSortLabel></MudTh>
+                            }
+
+                        <MudTh><MudTableSortLabel SortBy="new Func<WorkOrderOverviewUI, object>(x=>x.Status)">Status</MudTableSortLabel></MudTh>
+                        <MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Tip naloga">@context.WorkOrderType</MudTd>
+                        <MudTd DataLabel="Podjetje">@context.Company</MudTd>
+                        <MudTd DataLabel="Datum">@context.DateModified.Value.ToString("dd.MM.yyyy")</MudTd>
+                        @if (isUserAdmin)
+                            {
+                            <MudTd DataLabel="Cena">@context.PriceTotal €</MudTd>
+                            <MudTd DataLabel="Vpisal/a">@context.ModifiedByUserName</MudTd>
+                            }
+                        <MudTd DataLabel="Status">@context.Status</MudTd>
+                        <MudTd DataLabel="">
+                            @if (@context.WorkOrderStatusId == (int)WorkOrderStatusEnum.Saved || @context.WorkOrderStatusId == (int)WorkOrderStatusEnum.ToConfirm)
+                                {
+                                <MudFab @onclick="@(()=>OpenWorkorderEdit(context))" Color="Color.Success" Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Class="mr-4" IconSize="Size.Small" />
+                                }
+                            <MudFab @onclick="@(()=>OpenWorkorderInfo(context))" Color="Color.Info" Icon="@Icons.Material.Filled.Info" Size="Size.Small" Class="mr-3" IconSize="Size.Small" />
+                            <MudFab @onclick="@(()=>OpenDeleteDialog(context))" Color="Color.Error" Icon="@Icons.Material.Filled.Delete" Size="Size.Small" IconSize="Size.Small" />
+                        </MudTd>
+
+                    </RowTemplate>
+                    <PagerContent>
+                        <MudTablePager />
+                    </PagerContent>
+                </MudTable>
+            }
+
+            <MudDialog @bind-IsVisible="visibleDialog">
+                <TitleContent>
+                    <MudText Typo="Typo.h6">
+                        <MudIcon Icon="@Icons.Material.Filled.Delete" Class="mr-3" /> Brisanje
+                    </MudText>
+                </TitleContent>
+                <DialogContent>
+                    Ali ste prepričani, da želite izbrisati delovni nalog?
+                </DialogContent>
+                <DialogActions>
+                    <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="CancelDelete" Class="px-10">Prekliči</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="ConfirmDelete" Class="px-10">Potrdi</MudButton>
+                </DialogActions>
+            </MudDialog>
+
+            @if (workOrderRent != null)
+            {
+                <MudText Typo="Typo.h6">Podrobnosti delovnega naloga za najem</MudText>
+                <WorkOrderRent lookupWOR="workOrderRent" editMode="editMode"></WorkOrderRent>
+                <MudCardActions>
+                    <MudButton @onclick="CloseWorkorderInfo" Variant="Variant.Filled" Color="Color.Info">Nazaj</MudButton>
+                </MudCardActions>
+            }
+            else if (workOrderRepair != null)
+            {
+                <MudText Typo="Typo.h6">Podrobnosti delovnega naloga za servis</MudText>
+                <WorkOrderRepair lookupWOR="workOrderRepair" editMode="editMode"></WorkOrderRepair>
+                <MudCardActions>
+                    <MudButton @onclick="CloseWorkorderInfo" Variant="Variant.Filled" Color="Color.Info">Nazaj</MudButton>
+                </MudCardActions>
+            }
+            else if (workOrderTransport != null)
+            {
+                <MudText Typo="Typo.h6">Podrobnosti delovnega naloga za prevoz</MudText>
+                <WorkOrderTransport lookupWOT1="workOrderTransport" editMode="editMode"></WorkOrderTransport>
+                <MudCardActions>
+                    <MudButton @onclick="CloseWorkorderInfo" Variant="Variant.Filled" Color="Color.Info">Nazaj</MudButton>
+                </MudCardActions>
+            }
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <LoginRedirect></LoginRedirect>
+    </NotAuthorized>
+</AuthorizeView>
+
+
+@code {
+
+    private List<WorkOrderOverviewUI> workorderList = new();
+    private string searchString = "";
+    private bool visibleDialog = false;
+    private WorkOrderOverviewUI selectedWOO;
+
+    private WorkOrderRentUI workOrderRent = null;
+    private WorkOrderRepairUI workOrderRepair = null;
+    private WorkOrderTransportUI workOrderTransport = null;
+
+    private bool isUserAdmin = false;
+    private bool editMode = false;
+    private LoggedInUserModel loggedUser;
+
+    protected override async Task OnInitializedAsync()
+    {
+        loggedUser = await sessionStorage.GetItemAsync<LoggedInUserModel>("User");
+        if (loggedUser == null)
+        {
+            return;
+        }
+        isUserAdmin = loggedUser.RoleId == (int)UserRole.Admin;
+        if (isUserAdmin)
+        {
+            workorderList = (await workOrderClient.GetAllWorkOrderOverviewsAsync()).ToList();
+        }
+        else
+        {
+            workorderList = (await workOrderClient.GetWorkerOverviewsAsync(loggedUser.Id)).ToList();
+        }
+    }
+
+    private void CancelDelete()
+    {
+        visibleDialog = false;
+    }
+
+    private async void ConfirmDelete()
+    {
+
+        var result = await workOrderClient.DeleteWorkOrderAsync(selectedWOO);
+        if (result)
+        {
+            workorderList = (await workOrderClient.GetAllWorkOrderOverviewsAsync()).ToList();
+            Snackbar.Add("Zapis uspešno zbrisan", Severity.Success);
+        }
+        else
+        {
+            Snackbar.Add("Napaka pri brisanju", Severity.Error);
+        }
+        visibleDialog = false;
+        StateHasChanged();
+    }
+
+    private void OpenDeleteDialog(WorkOrderOverviewUI workOrderOverview)
+    {
+        selectedWOO = workOrderOverview;
+        visibleDialog = true;
+    }
+
+    private async void OpenWorkorderInfo(WorkOrderOverviewUI workOrderOverview)
+    {
+        if (workOrderOverview.WorkOrderType == "Najem")
+        {
+            if (isUserAdmin)
+            {
+                workOrderRent = await workOrderClient.GetWorkOrderRentAsync(workOrderOverview.Id);
+            }
+            else
+            {
+                workOrderRent = await workOrderClient.GetWorkOrderRentWorkerAsync(workOrderOverview.Id);
+            }
+        }
+        else if (workOrderOverview.WorkOrderType == "Servis")
+        {
+            if (isUserAdmin)
+            {
+                workOrderRepair = await workOrderClient.GetWorkOrderRepairAsync(workOrderOverview.Id);
+            }
+            else
+            {
+                workOrderRepair = await workOrderClient.GetWorkOrderRepairWorkerAsync(workOrderOverview.Id);
+            }
+        }
+        else if (workOrderOverview.WorkOrderType == "Prevoz")
+        {
+            if (isUserAdmin)
+            {
+                workOrderTransport = await workOrderClient.GetWorkOrderTransportAsync(workOrderOverview.Id);
+            }
+            else
+            {
+                workOrderTransport = await workOrderClient.GetWorkOrderTransportWorkerAsync(workOrderOverview.Id);
+            }
+        }
+        StateHasChanged();
+    }
+
+    private async void CloseWorkorderInfo()
+    {
+        workOrderRent = null;
+        workOrderRepair = null;
+        workOrderTransport = null;
+        editMode = false;
+        if (isUserAdmin)
+        {
+            workorderList = (await workOrderClient.GetAllWorkOrderOverviewsAsync()).ToList();
+        }
+        else
+        {
+            workorderList = (await workOrderClient.GetWorkerOverviewsAsync(loggedUser.Id)).ToList();
+        }
+        StateHasChanged();
+    }
+
+    private void OpenWorkorderEdit(WorkOrderOverviewUI workOrderOverview)
+    {
+        editMode = true;
+        OpenWorkorderInfo(workOrderOverview);
+    }
+
+    private bool FilterFunc1(WorkOrderOverviewUI element) => FilterFunc(element, searchString);
+
+    private bool FilterFunc(WorkOrderOverviewUI element, string searchString)
+    {
+        if (string.IsNullOrWhiteSpace(searchString))
+            return true;
+        if (element.Company.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (element.Status.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (element.ModifiedByUserName.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        return false;
+    }
+}

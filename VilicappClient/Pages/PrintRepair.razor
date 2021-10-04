@@ -1,0 +1,145 @@
+﻿@layout LoginLayout
+@page "/printrepair"
+@page "/printrepair/{woId}"
+@using VilicappAPI
+@inject WorkOrderClient workOrderClient
+@inject IJSRuntime jsRuntime
+@inject NavigationManager NavManager
+@inject Blazored.SessionStorage.ISessionStorageService sessionStorage
+
+<AuthorizeView Context="neki">
+    <Authorized>
+        <div style="width: 100%">
+            <EditForm Model="workOrderRepair">
+                <MudText Typo="Typo.h5">Delovni nalog - servis</MudText>
+                <MudTextField @bind-Value="workOrderRepair.Client" Label="Naročnik" Variant="Variant.Text"></MudTextField>
+                <MudTextField @bind-Value="workOrderRepair.TaxNumber" Label="Davčna številka" Variant="Variant.Text"></MudTextField>
+                <MudTextField @bind-Value="workOrderRepair.Contact" Label="Kontakt" Variant="Variant.Text"></MudTextField>
+                <MudTextField @bind-Value="workOrderRepair.ForkliftName" Label="Tip viličarja/stroja" Variant="Variant.Text"></MudTextField>
+                <MudDatePicker Label="Datum prevzema" DateFormat="dd.MM.yyyy" @bind-Date="workOrderRepair.Recieved" DisableToolbar="true" />
+                <MudDatePicker Label="Datum končnega dela" DateFormat="dd.MM.yyyy" @bind-Date="workOrderRepair.EndWork" DisableToolbar="true" />
+                <MudTextField @bind-Value="orderName" Label="Vrsta naročila" Variant="Variant.Text"></MudTextField>
+
+                <MudTextField @bind-Value="workOrderRepair.Description" Label="Opis popravila" Variant="Variant.Text"></MudTextField>
+
+                <MudTable Class="mt-4" Items="@workTimeConsumptionList">
+                    <ToolBarContent>
+                        <MudText Typo="Typo.h6">Poraba delovnega časa</MudText>
+                        <MudSpacer />
+
+                    </ToolBarContent>
+
+                    <HeaderContent>
+                        <MudTh>Vrsta dela</MudTh>
+                        <MudTh>Specifikacija dela</MudTh>
+                        <MudTh>Ure</MudTh>
+                        <MudTh>Cena</MudTh>
+                        <MudTh>Skupaj</MudTh>
+                    </HeaderContent>
+                    <RowTemplate Context="Main">
+                        <MudTd DataLabel="Vrsta dela">@Main.WorkTimeType.Name</MudTd>
+                        <MudTd DataLabel="Specifikacija dela">@Main.Description</MudTd>
+                        <MudTd DataLabel="Ure">@Main.Hours</MudTd>
+                        <MudTd DataLabel="Cena">@Main.Price €</MudTd>
+                        <MudTd DataLabel="Skupaj">@((Main.Hours * Main.Price).GetValueOrDefault(0).ToString("0.##")) €</MudTd>
+                    </RowTemplate>
+                </MudTable>
+
+                <MudTable Class="mt-4" Items="@materialConsumptionList">
+                    <ToolBarContent>
+                        <MudText Typo="Typo.h6">Poraba materiala</MudText>
+                        <MudSpacer />
+                    </ToolBarContent>
+
+                    <HeaderContent>
+                        <MudTh>Material</MudTh>
+                        <MudTh>Količina</MudTh>
+
+                        <MudTh>Cena</MudTh>
+                        <MudTh>Skupaj</MudTh>
+
+                    </HeaderContent>
+                    <RowTemplate Context="Main">
+                        <MudTd DataLabel="Material">@Main.Material</MudTd>
+                        <MudTd DataLabel="Količina">@Main.Quantity</MudTd>
+
+                        <MudTd DataLabel="Cena">@Main.Price.GetValueOrDefault(0) €</MudTd>
+                        <MudTd DataLabel="Skupaj">@((Main.Quantity * Main.Price).GetValueOrDefault(0).ToString("0.##")) €</MudTd>
+
+                    </RowTemplate>
+                </MudTable>
+
+                <MudTable Class="mt-4" Items="@transportationList">
+                    <ToolBarContent>
+                        <MudText Typo="Typo.h6">Opravljeni prevozi</MudText>
+                        <MudSpacer />
+                    </ToolBarContent>
+
+                    <HeaderContent>
+                        <MudTh>Relacija</MudTh>
+                        <MudTh>Kilometrina</MudTh>
+                        <MudTh>Cena</MudTh>
+                        <MudTh>Skupaj</MudTh>
+
+                    </HeaderContent>
+                    <RowTemplate Context="Main">
+                        <MudTd DataLabel="Relacija">@Main.Relation</MudTd>
+                        <MudTd DataLabel="Kilometrina">@Main.Kilometers</MudTd>
+                        <MudTd DataLabel="Cena">@Main.Price €</MudTd>
+                        <MudTd DataLabel="Skupaj">@((Main.Kilometers * Main.Price).GetValueOrDefault(0).ToString("0.##")) €</MudTd>
+                    </RowTemplate>
+                </MudTable>
+
+                <MudTextField @bind-Value="workOrderRepair.Note" Label="Opombe" Variant="Variant.Text"></MudTextField>
+                <MudText Class="mt-3" Typo="Typo.h5">Skupaj: @workOrderRepair.PriceTotal €</MudText>
+
+            </EditForm>
+
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <LoginRedirect></LoginRedirect>
+    </NotAuthorized>
+</AuthorizeView>
+
+
+@code {
+
+    [Parameter]
+    public string woId { get; set; }
+
+    private WorkOrderRepairUI workOrderRepair = new();
+
+    private List<TransportationUI> transportationList = new();
+    private List<MaterialConsumptionUI> materialConsumptionList = new();
+    private List<WorkTimeConsumptionUI> workTimeConsumptionList = new();
+    private string orderName;
+    private bool printShown = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var loggedUser = await sessionStorage.GetItemAsync<LoggedInUserModel>("User");
+        if (loggedUser == null)
+        {
+            return;
+        }
+        workOrderRepair = await workOrderClient.GetWorkOrderRepairAsync(int.Parse(woId));
+        orderName = workOrderRepair.OrderType.Id == 0 ? "" : workOrderRepair.OrderType.Name;
+        transportationList = workOrderRepair.Transportations.ToList();
+        materialConsumptionList = workOrderRepair.MaterialConsumptions.ToList();
+        workTimeConsumptionList = workOrderRepair.WorkTimeConsumptions.ToList();
+        StateHasChanged();
+    }
+
+    protected override async void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender && !printShown)
+        {
+            printShown = true;
+            await jsRuntime.InvokeVoidAsync("printWholePage");
+            NavManager.NavigateTo("/workorderoverview");
+        }
+
+    }
+
+}

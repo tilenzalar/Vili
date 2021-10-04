@@ -1,0 +1,474 @@
+﻿@using VilicappAPI
+@using VilicappClient.Models
+@inject Blazored.SessionStorage.ISessionStorageService sessionStorage
+@inject NavigationManager NavManager
+@inject WorkOrderClient workOrderClient
+@inject ISnackbar Snackbar
+
+<AuthorizeView Context="neki">
+    <Authorized>
+        <div class="flex flex-col md:flex-row">
+            <div class="flex-1" style="max-width:700px">
+                <EditForm Model="workOrderTransport" OnValidSubmit="OnValidSubmit">
+                    <DataAnnotationsValidator />
+                    <MudTextField @bind-Value="workOrderTransport.Company" For="@(() => workOrderTransport.Company)" Label="Podjetje" ReadOnly="isInLookupMode" Variant="Variant.Text"></MudTextField>
+                    <MudTextField @bind-Value="workOrderTransport.TaxNumber" For="@(() => workOrderTransport.TaxNumber)" Label="Davčna številka" ReadOnly="isInLookupMode" Variant="Variant.Text"></MudTextField>
+                    <MudTextField @bind-Value="workOrderTransport.Contact" For="@(() => workOrderTransport.Contact)" Label="Kontakt" ReadOnly="isInLookupMode" Variant="Variant.Text"></MudTextField>
+                    <MudSelect T="VehicleTypeUI" @bind-Value="@vehicleType" Label="Vrsta vozila" ToStringFunc="@converter" Variant="Variant.Outlined" ReadOnly="isInLookupMode" OffsetY="true">
+
+                        @foreach (var vt in vehicleTypes)
+                        {
+                            <MudSelectItem Value="@(new VehicleTypeUI() { Id = vt.Id, Name=vt.Name})" />
+                        }
+
+                    </MudSelect>
+
+                    <MudTextField @bind-Value="workOrderTransport.Brand" Label="Znamka" Variant="Variant.Text" ReadOnly="isInLookupMode"></MudTextField>
+                    <MudTextField @bind-Value="workOrderTransport.LicenseNr" Label="Reg. št." Variant="Variant.Text" ReadOnly="isInLookupMode"></MudTextField>
+                    <MudDatePicker Label="Datum" DateFormat="dd.MM.yyyy" @bind-Date="workOrderTransport.WorkOrderDate" ReadOnly="isInLookupMode" DisableToolbar="true" />
+
+                    <MudTable Class="mt-4" Items="@relations" CanCancelEdit="true" SortLabel="Sortiraj po" RowEditPreview="BackupItemRelation" RowEditCancel="ResetRelation" ReadOnly="isInLookupMode">
+                        <ToolBarContent>
+                            <MudText Typo="Typo.h6">Relacija</MudText>
+                        </ToolBarContent>
+
+                        <HeaderContent>
+                            <MudTh>Relacija</MudTh>
+                            <MudTh>Kilometrina</MudTh>
+                            @if (isUserAdmin)
+                            {
+                                <MudTh>Cena/km</MudTh>
+                                <MudTh>Skupaj</MudTh>
+                            }
+                            <MudTh></MudTh>
+                        </HeaderContent>
+                        <RowTemplate Context="Main">
+                            <MudTd DataLabel="Relacija">@Main.Name</MudTd>
+                            <MudTd DataLabel="Kilometrina">@Main.Kilometers</MudTd>
+                            @if (isUserAdmin)
+                            {
+                                <MudTd DataLabel="Cena/km">@Main.KmPrice.GetValueOrDefault(0) €</MudTd>
+                                <MudTd DataLabel="Skupaj">@((Main.Kilometers * Main.KmPrice).GetValueOrDefault(0).ToString("0.##")) €</MudTd>
+                            }
+                        </RowTemplate>
+                        <RowEditingTemplate Context="Edit">
+                            <MudTd DataLabel="Relacija">
+                                <MudTextField @bind-Value="@Edit.Name" Required />
+                            </MudTd>
+                            <MudTd DataLabel="Kilometrina">
+                                <MudNumericField @bind-Value="@Edit.Kilometers" Required Min="0" />
+                            </MudTd>
+                            @if (isUserAdmin)
+                            {
+                                <MudTd DataLabel="Cena/km">
+                                    <MudNumericField @bind-Value="@Edit.KmPrice" Required Min="0" />
+                                </MudTd>
+                                <MudTd DataLabel="Skupaj">
+                                    <MudTextField Value="@((Edit.Kilometers * Edit.KmPrice).GetValueOrDefault(0).ToString("0.##"))" ReadOnly="true" />
+                                </MudTd>
+                            }
+                        </RowEditingTemplate>
+                    </MudTable>
+
+                    <MudTable Class="mt-4" Items="@tools" CanCancelEdit="true" SortLabel="Sortiraj po" RowEditPreview="BackupItemTool" RowEditCancel="ResetTool" ReadOnly="isInLookupMode">
+                        <ToolBarContent>
+                            <MudText Typo="Typo.h6">Cestnina</MudText>
+                        </ToolBarContent>
+
+                        <HeaderContent>
+                            <MudTh>Količina</MudTh>
+                            @if (isUserAdmin)
+                            {
+                                <MudTh>Cena/kol</MudTh>
+                                <MudTh>Skupaj</MudTh>
+                            }
+                            <MudTh></MudTh>
+                        </HeaderContent>
+                        <RowTemplate Context="Main">
+                            <MudTd DataLabel="Količina">@Main.Qty</MudTd>
+                            @if (isUserAdmin)
+                            {
+                                <MudTd DataLabel="Cena/kol">@Main.QtyPrice.GetValueOrDefault(0) €</MudTd>
+                                <MudTd DataLabel="Skupaj">@((Main.Qty * Main.QtyPrice).GetValueOrDefault(0).ToString("0.##")) €</MudTd>
+                            }
+                        </RowTemplate>
+                        <RowEditingTemplate Context="Edit">
+                            <MudTd DataLabel="Količina">
+                                <MudNumericField @bind-Value="@Edit.Qty" Required Min="0" />
+                            </MudTd>
+                            @if (isUserAdmin)
+                            {
+                                <MudTd DataLabel="Cena/kol">
+                                    <MudNumericField @bind-Value="@Edit.QtyPrice" Required Min="0" />
+                                </MudTd>
+                                <MudTd DataLabel="Skupaj">
+                                    <MudTextField Value="@((Edit.Qty * Edit.QtyPrice).GetValueOrDefault(0).ToString("0.##"))" ReadOnly="true" />
+                                </MudTd>
+                            }
+                        </RowEditingTemplate>
+                    </MudTable>
+
+                    <MudTable Class="mt-4" Items="@additionalWorks" CanCancelEdit="true" SortLabel="Sortiraj po" RowEditPreview="BackupItemAdditionalWork" RowEditCancel="ResetAdditionalWork" ReadOnly="isInLookupMode">
+                        <ToolBarContent>
+                            <MudText Typo="Typo.h6">Startnina, nakladanje, razkladanje</MudText>
+                        </ToolBarContent>
+
+                        <HeaderContent>
+                            <MudTh>Količina</MudTh>
+                            @if (isUserAdmin)
+                            {
+                                <MudTh>Cena/kol</MudTh>
+                                <MudTh>Skupaj</MudTh>
+                            }
+                            <MudTh></MudTh>
+                        </HeaderContent>
+                        <RowTemplate Context="Main">
+                            <MudTd DataLabel="Količina">@Main.Qty</MudTd>
+                            @if (isUserAdmin)
+                            {
+                                <MudTd DataLabel="Cena/kol">@Main.QtyPrice.GetValueOrDefault(0) €</MudTd>
+                                <MudTd DataLabel="Skupaj">@((Main.Qty * Main.QtyPrice).GetValueOrDefault(0).ToString("0.##")) €</MudTd>
+                            }
+                        </RowTemplate>
+                        <RowEditingTemplate Context="Edit">
+                            <MudTd DataLabel="Količina">
+                                <MudNumericField @bind-Value="@Edit.Qty" Required Min="0" />
+                            </MudTd>
+                            @if (isUserAdmin)
+                            {
+                                <MudTd DataLabel="Cena/kol">
+                                    <MudNumericField @bind-Value="@Edit.QtyPrice" Required Min="0" />
+                                </MudTd>
+                                <MudTd DataLabel="Skupaj">
+                                    <MudTextField Value="@((Edit.Qty * Edit.QtyPrice).GetValueOrDefault(0).ToString("0.##"))" ReadOnly="true" />
+                                </MudTd>
+                            }
+                        </RowEditingTemplate>
+                    </MudTable>
+
+                    <MudTable Class="mt-4" Items="@asistances" CanCancelEdit="true" SortLabel="Sortiraj po" RowEditPreview="BackupItemAsistance" RowEditCancel="ResetAsistance" ReadOnly="isInLookupMode">
+                        <ToolBarContent>
+                            <MudText Typo="Typo.h6">Asistenca</MudText>
+                        </ToolBarContent>
+
+                        <HeaderContent>
+                            <MudTh>Ure</MudTh>
+                            @if (isUserAdmin)
+                            {
+                                <MudTh>Cena/uro</MudTh>
+                                <MudTh>Skupaj</MudTh>
+                            }
+                            <MudTh></MudTh>
+                        </HeaderContent>
+                        <RowTemplate Context="Main">
+                            <MudTd DataLabel="Ure">@Main.Hours</MudTd>
+                            @if (isUserAdmin)
+                            {
+                                <MudTd DataLabel="Cena/uro">@Main.HoursPrice.GetValueOrDefault(0) €</MudTd>
+                                <MudTd DataLabel="Skupaj">@((Main.Hours * Main.HoursPrice).GetValueOrDefault(0).ToString("0.##")) €</MudTd>
+                            }
+                        </RowTemplate>
+                        <RowEditingTemplate Context="Edit">
+                            <MudTd DataLabel="Ure">
+                                <MudNumericField @bind-Value="@Edit.Hours" Required Min="0" />
+                            </MudTd>
+                            @if (isUserAdmin)
+                            {
+                                <MudTd DataLabel="Cena/uro">
+                                    <MudNumericField @bind-Value="@Edit.HoursPrice" Required Min="0" />
+                                </MudTd>
+                                <MudTd DataLabel="Skupaj">
+                                    <MudTextField Value="@((Edit.Hours * Edit.HoursPrice).GetValueOrDefault(0).ToString("0.##"))" ReadOnly="true" />
+                                </MudTd>
+                            }
+                        </RowEditingTemplate>
+                    </MudTable>
+
+                    <MudTextField @bind-Value="workOrderTransport.Note" Label="Opombe" Variant="Variant.Text" ReadOnly="isInLookupMode"></MudTextField>
+                    @if (!isInLookupMode)
+                    {
+                        <MudCardActions>
+                            <MudButton OnClick="SaveWorkOrder" ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Success">Shrani</MudButton>
+                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Class="ml-auto">Zaključi</MudButton>
+                        </MudCardActions>
+                    }
+                </EditForm>
+
+            </div>
+            <div class="flex flex-col md:ml-6">
+                <div>
+                    @if (isUserAdmin && (isInEditMode || isInLookupMode))
+                    {
+                        <MudText Typo="Typo.h6" Class="mb-2">Dodatne kontrole</MudText>
+                        <MudButton StartIcon="@Icons.Material.Filled.Print" Color="Color.Primary" Variant="Variant.Filled" OnClick="PrintPage" Class="ml-auto">Printaj</MudButton>
+                    }
+                </div>
+                <div class="mt-4">
+                    @if (!isInLookupMode)
+                    {
+                        <div>
+
+                            <MudButton Link="https://www.darsgo.si/portal/si/izracun"
+                                        Target="_blank"
+                                        Variant="Variant.Filled"
+                                        Color="Color.Primary">
+                                Izračun cestnine
+                            </MudButton>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <LoginRedirect></LoginRedirect>
+    </NotAuthorized>
+</AuthorizeView>
+
+
+@code {
+    private WorkOrderTransportUI workOrderTransport = new();
+
+    private List<VehicleTypeUI> vehicleTypes = new();
+    private VehicleTypeUI vehicleType = new();
+
+    private List<Relation> relations = new();
+    private Relation relationBeforeEdit;
+
+    private List<Tool> tools = new();
+    private Tool toolBeforeEdit;
+
+    private List<AdditionalWork> additionalWorks = new();
+    private AdditionalWork additionalWorkBeforeEdit;
+
+    private List<Asistance> asistances = new();
+    private Asistance asistanceBeforeEdit;
+
+    private bool isInLookupMode = false;
+    private bool isUserAdmin = false;
+    private bool saveWO = false;
+    private LoggedInUserModel loggedUser;
+    private bool isInEditMode = false;
+
+    [Parameter]
+    public WorkOrderTransportUI lookupWOT1 { get; set; }
+
+    [Parameter]
+    public bool editMode { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        loggedUser = await sessionStorage.GetItemAsync<LoggedInUserModel>("User");
+        if (loggedUser == null)
+        {
+            return;
+        }
+        vehicleTypes = (await workOrderClient.GetAllVehicleTypesAsync()).ToList();
+
+        relations.Add(new Relation
+        {
+            Name = "",
+            Kilometers = 0,
+            KmPrice = 0
+        });
+        tools.Add(new Tool
+        {
+            Qty = 0,
+            QtyPrice = 0
+        });
+        additionalWorks.Add(new AdditionalWork
+        {
+            Qty = 0,
+            QtyPrice = 0
+        });
+        asistances.Add(new Asistance
+        {
+            Hours = 0,
+            HoursPrice = 0
+        });
+        loggedUser = await sessionStorage.GetItemAsync<LoggedInUserModel>("User");
+        isUserAdmin = loggedUser.RoleId == (int)UserRole.Admin;
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (lookupWOT1 != null)
+        {
+            workOrderTransport = lookupWOT1;
+            relations.Clear();
+            tools.Clear();
+            additionalWorks.Clear();
+            asistances.Clear();
+            relations.Add(new Relation
+            {
+                Name = lookupWOT1.RelationName,
+                Kilometers = lookupWOT1.RelationKm.GetValueOrDefault(),
+                KmPrice = lookupWOT1.RelationKmPrice.GetValueOrDefault()
+            });
+            tools.Add(new Tool
+            {
+                Qty = lookupWOT1.ToolsQty.GetValueOrDefault(),
+                QtyPrice = lookupWOT1.ToolsQtyPrice.GetValueOrDefault()
+            });
+            additionalWorks.Add(new AdditionalWork
+            {
+                Qty = lookupWOT1.AdditionalWorkQty.GetValueOrDefault(),
+                QtyPrice = lookupWOT1.AdditionalWorkPrice.GetValueOrDefault()
+            });
+            asistances.Add(new Asistance
+            {
+                Hours = lookupWOT1.AsistanceHours.GetValueOrDefault(),
+                HoursPrice = lookupWOT1.AsistanceHourPrice.GetValueOrDefault()
+            });
+
+            vehicleType = workOrderTransport.VehicleType;
+            isInLookupMode = !editMode;
+        }
+        isInEditMode = editMode;
+    }
+
+    private async void OnValidSubmit()
+    {
+        var r = relations.FirstOrDefault();
+        workOrderTransport.RelationName = r.Name;
+        workOrderTransport.RelationKm = (double)r.Kilometers;
+        workOrderTransport.RelationKmPrice = (double)r.KmPrice;
+
+        var t = tools.FirstOrDefault();
+        workOrderTransport.ToolsQty = t.Qty;
+        workOrderTransport.ToolsQtyPrice = t.QtyPrice;
+
+        var a = additionalWorks.FirstOrDefault();
+        workOrderTransport.AdditionalWorkPrice = a.QtyPrice;
+        workOrderTransport.AdditionalWorkQty = a.Qty;
+
+        var asistance = asistances.FirstOrDefault();
+        workOrderTransport.AsistanceHours = asistance.Hours;
+        workOrderTransport.AsistanceHourPrice = asistance.HoursPrice;
+
+        workOrderTransport.VehicleTypeId = vehicleType.Id;
+        workOrderTransport.ModifiedByUserId = loggedUser.Id;
+        if (isInEditMode)
+        {
+            var woo = new WorkOrderOverviewUI
+            {
+                Id = workOrderTransport.Id,
+                WorkOrderType = "Prevoz"
+            };
+            await workOrderClient.DeleteWorkOrderAsync(woo);
+        }
+        if (saveWO)
+        {
+            workOrderTransport.WorkOrderStatusId = (int)WorkOrderStatusEnum.Saved;
+        }
+        else
+        {
+            workOrderTransport.WorkOrderStatusId = isUserAdmin ? (int)WorkOrderStatusEnum.Finished : (int)WorkOrderStatusEnum.ToConfirm;
+        }
+
+        var newId = await workOrderClient.AddWorkOrderTransportAsync(workOrderTransport);
+
+        if (newId > 0)
+        {
+            workOrderTransport.Id = newId;
+            Snackbar.Add("Zapis uspešno dodan", Severity.Success);
+            NavManager.NavigateTo("/workorderoverview");
+        }
+    }
+    private void SaveWorkOrder()
+    {
+        saveWO = true;
+    }
+
+    private void BackupItemRelation(object element)
+    {
+        relationBeforeEdit = new()
+        {
+            Name = ((Relation)element).Name,
+            Kilometers = ((Relation)element).Kilometers,
+            KmPrice = ((Relation)element).KmPrice
+        };
+    }
+
+    private void ResetRelation(object element)
+    {
+        ((Relation)element).Name = relationBeforeEdit.Name;
+        ((Relation)element).Kilometers = relationBeforeEdit.Kilometers;
+        ((Relation)element).KmPrice = relationBeforeEdit.KmPrice;
+    }
+
+    private void BackupItemTool(object element)
+    {
+        toolBeforeEdit = new()
+        {
+            Qty = ((Tool)element).Qty,
+            QtyPrice = ((Tool)element).QtyPrice
+        };
+    }
+
+    private void ResetTool(object element)
+    {
+        ((Tool)element).Qty = toolBeforeEdit.Qty;
+        ((Tool)element).QtyPrice = toolBeforeEdit.QtyPrice;
+    }
+
+    private void BackupItemAdditionalWork(object element)
+    {
+        additionalWorkBeforeEdit = new()
+        {
+            Qty = ((AdditionalWork)element).Qty,
+            QtyPrice = ((AdditionalWork)element).QtyPrice
+        };
+    }
+
+    private void ResetAdditionalWork(object element)
+    {
+        ((AdditionalWork)element).Qty = additionalWorkBeforeEdit.Qty;
+        ((AdditionalWork)element).QtyPrice = additionalWorkBeforeEdit.QtyPrice;
+    }
+
+    private void BackupItemAsistance(object element)
+    {
+        asistanceBeforeEdit = new()
+        {
+            Hours = ((Asistance)element).Hours,
+            HoursPrice = ((Asistance)element).HoursPrice
+        };
+    }
+
+    private void ResetAsistance(object element)
+    {
+        ((Asistance)element).Hours = asistanceBeforeEdit.Hours;
+        ((Asistance)element).HoursPrice = asistanceBeforeEdit.HoursPrice;
+    }
+
+    Func<VehicleTypeUI, string> converter = p => p?.Name;
+    private void PrintPage()
+    {
+        NavManager.NavigateTo("/printtransport/" + workOrderTransport.Id);
+    }
+
+    public class Relation
+    {
+        public string Name { get; set; }
+        public double? Kilometers { get; set; }
+        public double? KmPrice { get; set; }
+    }
+
+    public class Tool
+    {
+        public int Qty { get; set; }
+        public double? QtyPrice { get; set; }
+    }
+
+    public class AdditionalWork
+    {
+        public int Qty { get; set; }
+        public double? QtyPrice { get; set; }
+    }
+    public class Asistance
+    {
+        public double? Hours { get; set; }
+        public double? HoursPrice { get; set; }
+    }
+}

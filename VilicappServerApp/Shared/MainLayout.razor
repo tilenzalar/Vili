@@ -1,0 +1,60 @@
+﻿@using VilicappAPI
+@using VilicappServerApp.Services
+@using VilicappServerApp.BusinessLogic
+@inject VilicappAPI.UsersClient usersclient
+@inject Blazored.SessionStorage.ISessionStorageService sessionStorage
+@inject NavigationManager NavManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inherits LayoutComponentBase
+
+<div class="page">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <div class="main">
+        <div class="top-row px-4">
+            <button @onclick="Test" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                Test
+            </button>
+            <button @onclick="LogoutUser" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                Odjava
+            </button>
+        </div>
+
+        <div class="content px-4">
+            @Body
+        </div>
+    </div>
+</div>
+
+@code{
+
+    private async Task<bool> LogoutUser()
+    {
+        var user = await sessionStorage.GetItemAsync<LoggedInUserModel>("User");
+        if (user != null) //da si že odjavljen in si se probu odjavt
+        {
+            var loggedInUserModel = await usersclient.LogoutAsync(user.UserName);
+            if (loggedInUserModel.Token == "") //uspesna odjava
+            {
+                ((CustomAuthenticationStateProvider)AuthenticationStateProvider).MarkUserAsLoggedOut();
+                await sessionStorage.RemoveItemAsync("User");
+                NavManager.NavigateTo("/");
+            }
+        }
+        else
+        {
+            ((CustomAuthenticationStateProvider)AuthenticationStateProvider).MarkUserAsLoggedOut();
+            NavManager.NavigateTo("/");
+        }
+
+        return await Task.FromResult(true);
+    }
+
+    private async Task<bool> Test()
+    {
+        var loggedInUserModel = await usersclient.GetUsersAsync();
+        return await Task.FromResult(true);
+    }
+}

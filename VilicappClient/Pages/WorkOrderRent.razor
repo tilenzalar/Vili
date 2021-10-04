@@ -1,0 +1,452 @@
+﻿@using VilicappAPI
+@using VilicappClient.Models
+@inject NavigationManager NavManager
+@inject WorkOrderClient workOrderClient
+@inject Blazored.SessionStorage.ISessionStorageService sessionStorage
+@inject ISnackbar Snackbar
+@inject NavigationManager NavManager
+
+<AuthorizeView Context="neki">
+    <Authorized>
+        <div class="flex flex-col md:flex-row">
+            <div class="flex-1" style="max-width:700px">
+                <EditForm Model="workOrderRent" OnValidSubmit="OnValidSubmit">
+                    <DataAnnotationsValidator />
+                    <MudTextField @bind-Value="workOrderRent.Company" For="@(() => workOrderRent.Company)" Label="Podjetje" Variant="Variant.Text" ReadOnly="isInLookupMode"></MudTextField>
+                    <MudTextField @bind-Value="workOrderRent.TaxNumber" For="@(() => workOrderRent.TaxNumber)" Label="Davčna številka" Variant="Variant.Text" ReadOnly="isInLookupMode"></MudTextField>
+                    <MudTextField @bind-Value="workOrderRent.Contact" For="@(() => workOrderRent.Contact)" Label="Kontakt" Variant="Variant.Text" ReadOnly="isInLookupMode"></MudTextField>
+                    <MudTextField @bind-Value="workOrderRent.VehicleName" For="@(() => workOrderRent.VehicleName)" Label="Vrsta vozila" Variant="Variant.Text" ReadOnly="isInLookupMode"></MudTextField>
+                    <MudDatePicker Label="Začetek najema" DateFormat="dd.MM.yyyy" @bind-Date="workOrderRent.RentStart" DisableToolbar="true" ReadOnly="isInLookupMode" />
+                    <MudDatePicker Label="Konec najema" DateFormat="dd.MM.yyyy" @bind-Date="workOrderRent.RentEnd" DisableToolbar="true" ReadOnly="isInLookupMode" />
+
+                    <MudTable Class="mt-4" Items="@rentDetailList" CanCancelEdit="true" SortLabel="Sortiraj po" RowEditPreview="BackupItemRentDetail" RowEditCancel="ResetRentDetail" ReadOnly="isInLookupMode">
+                        <ToolBarContent>
+                            <MudText Typo="Typo.h6">Podatki od najemu</MudText>
+                            <MudSpacer />
+                            @if (!isInLookupMode)
+                            {
+                                <MudButton Color="Color.Secondary" Variant="Variant.Filled" OnClick="OpenRentDetailDialog" Class="ml-auto">Dodaj</MudButton>
+                            }
+                        </ToolBarContent>
+                        <HeaderContent>
+                            <MudTh>Najem/dni</MudTh>
+                            @if (isUserAdmin)
+                            {
+                                <MudTh>Cena</MudTh>
+                                <MudTh>Skupaj</MudTh>
+                            }
+
+                            @if (!isInLookupMode)
+                            {
+                                <MudTh></MudTh>
+                            }
+                        </HeaderContent>
+                        <RowTemplate Context="Main">
+                            <MudTd DataLabel="Najem/dni">@Main.RentDays</MudTd>
+                            @if (isUserAdmin)
+                            {
+                                <MudTd DataLabel="Cena">@Main.Price.GetValueOrDefault(0) €</MudTd>
+                                <MudTd DataLabel="Skupaj">@((Main.RentDays * Main.Price).GetValueOrDefault(0).ToString("0.##")) €</MudTd>
+                            }
+
+                            @if (!isInLookupMode)
+                            {
+                                <MudTd DataLabel="">
+                                    <MudFab @onclick="@(()=>DeleteRentDetail(@Main))" Color="Color.Error" Icon="@Icons.Material.Filled.Delete" Size="Size.Small" IconSize="Size.Small" />
+                                </MudTd>
+                            }
+                        </RowTemplate>
+                        <RowEditingTemplate Context="Edit">
+                            <MudTd DataLabel="Najem/dni">
+                                <MudNumericField @bind-Value="@Edit.RentDays" Required Min="0" />
+                            </MudTd>
+                            @if (isUserAdmin)
+                            {
+                                <MudTd DataLabel="Cena">
+                                    <MudNumericField @bind-Value="@Edit.Price" Required Min="0" />
+                                </MudTd>
+                                <MudTd DataLabel="Skupaj">
+                                    <MudTextField Value="@((Edit.RentDays * Edit.Price).GetValueOrDefault(0).ToString("0.##"))" ReadOnly="true" />
+                                </MudTd>
+                            }
+                        </RowEditingTemplate>
+                    </MudTable>
+
+                    <MudTable Class="mt-4" Items="@transportationList" CanCancelEdit="true" SortLabel="Sortiraj po" RowEditPreview="BackupItemTran" RowEditCancel="ResetTran" ReadOnly="isInLookupMode">
+                        <ToolBarContent>
+                            <MudText Typo="Typo.h6">Opravljeni prevozi</MudText>
+                            <MudSpacer />
+                            @if (!isInLookupMode)
+                            {
+                                <MudButton Color="Color.Secondary" Variant="Variant.Filled" OnClick="OpenTranDialog" Class="ml-auto">Dodaj</MudButton>
+                            }
+                        </ToolBarContent>
+
+                        <HeaderContent>
+                            <MudTh>Relacija</MudTh>
+                            @if (isUserAdmin)
+                            {
+                                <MudTh>Fiksen strošek</MudTh>
+                            }
+                            <MudTh>Kilometrina</MudTh>
+                            @if (isUserAdmin)
+                            {
+                                <MudTh>Cena/km</MudTh>
+                                <MudTh>Skupaj</MudTh>
+                            }
+                            @if (!isInLookupMode)
+                            {
+                                <MudTh></MudTh>
+                            }
+                        </HeaderContent>
+                        <RowTemplate Context="Main">
+                            <MudTd DataLabel="Relacija">@Main.Relation</MudTd>
+                            @if (isUserAdmin)
+                            {
+                                <MudTd DataLabel="Fiksen strošek">
+                                    <MudCheckBox @bind-Checked="@Main.FixedCost" ReadOnly="true"></MudCheckBox>
+                                </MudTd>
+                            }
+                            <MudTd DataLabel="Kilometrina">@Main.Kilometers</MudTd>
+                            @if (isUserAdmin)
+                            {
+                                <MudTd DataLabel="Cena">@Main.Price.GetValueOrDefault(0) €</MudTd>
+
+                                @if (@Main.FixedCost.GetValueOrDefault(false))
+                                {
+                                    <MudTd DataLabel="Skupaj">@(Main.Price.GetValueOrDefault(0).ToString("0.##")) €</MudTd>
+                                }
+                                else
+                                {
+                                    <MudTd DataLabel="Skupaj">@((Main.Kilometers * Main.Price).GetValueOrDefault(0).ToString("0.##")) €</MudTd>
+                                }
+                            }
+                            @if (!isInLookupMode)
+                            {
+                                <MudTd DataLabel="">
+                                    <MudFab @onclick="@(()=>DeleteTran(@Main))" Color="Color.Error" Icon="@Icons.Material.Filled.Delete" Size="Size.Small" IconSize="Size.Small" />
+                                </MudTd>
+                            }
+
+                        </RowTemplate>
+                        <RowEditingTemplate Context="Edit">
+                            <MudTd DataLabel="Relacija">
+                                <MudTextField @bind-Value="@Edit.Relation" Required />
+                            </MudTd>
+                            @if (isUserAdmin)
+                            {
+                                <MudTd DataLabel="Fiksen strošek">
+                                    <MudCheckBox @bind-Checked="@Edit.FixedCost"></MudCheckBox>
+                                </MudTd>
+                            }
+                            <MudTd DataLabel="Kilometrina">
+                                <MudNumericField @bind-Value="@Edit.Kilometers" Disabled="@(Edit.FixedCost.HasValue && Edit.FixedCost.Value)" Required Min="0" />
+                            </MudTd>
+                            @if (isUserAdmin)
+                            {
+                                <MudTd DataLabel="Cena">
+                                    <MudNumericField @bind-Value="@Edit.Price" Required Min="0" />
+                                </MudTd>
+                                <MudTd DataLabel="Skupaj">
+
+                                    @if (@Edit.FixedCost.GetValueOrDefault(false))
+                                    {
+                                        <MudTextField Value="@(Edit.Price.GetValueOrDefault(0).ToString("0.##"))" ReadOnly="true" />
+                                    }
+                                    else
+                                    {
+                                        <MudTextField Value="@((Edit.Kilometers * Edit.Price).GetValueOrDefault(0).ToString("0.##"))" ReadOnly="true" />
+                                    }
+
+                                </MudTd>
+                            }
+                        </RowEditingTemplate>
+                    </MudTable>
+
+                    <MudTextField @bind-Value="workOrderRent.Note" Label="Opombe" Variant="Variant.Text" ReadOnly="isInLookupMode"></MudTextField>
+                    @if (!isInLookupMode)
+                    {
+                        <MudCardActions>
+                            <MudButton OnClick="SaveWorkOrder" ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Success">Shrani</MudButton>
+                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Class="ml-auto">Zaključi</MudButton>
+                        </MudCardActions>
+                    }
+
+
+                    <MudDialog @bind-IsVisible="visibleRD">
+                        <TitleContent>
+                            <MudText Typo="Typo.h6">
+                                <MudIcon Icon="@Icons.Material.Filled.Edit" Class="mr-3" /> Nov zapis
+                            </MudText>
+                        </TitleContent>
+                        <DialogContent>
+                            <MudNumericField @bind-Value="@newRD.RentDays" Label="Najem/dni" />
+                            @if (isUserAdmin)
+                            {
+                                <MudNumericField @bind-Value="@newRD.Price" Label="Cena" />
+                                <MudTextField Value="@((newRD.RentDays * newRD.Price).GetValueOrDefault(0).ToString("0.##"))" Label="Skupaj" ReadOnly="true" />
+                            }
+                        </DialogContent>
+                        <DialogActions>
+                            <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="CancelRentDetailDialog" Class="px-10">Prekliči</MudButton>
+                            <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="SaveRentDetailDialog" Class="px-10">Dodaj</MudButton>
+                        </DialogActions>
+                    </MudDialog>
+
+                    <MudDialog @bind-IsVisible="visibleTran">
+                        <TitleContent>
+                            <MudText Typo="Typo.h6">
+                                <MudIcon Icon="@Icons.Material.Filled.Edit" Class="mr-3" /> Nov zapis
+                            </MudText>
+                        </TitleContent>
+                        <DialogContent>
+                            <MudTextField @bind-Value="@newTran.Relation" Label="Relacija" />
+                            @if (isUserAdmin)
+                            {
+                                <MudCheckBox @bind-Checked="@newTran.FixedCost" Label="Fiksen strošek"></MudCheckBox>
+                            }
+                            <MudNumericField @bind-Value="@newTran.Kilometers" Label="Količina" Disabled="@(newTran.FixedCost.HasValue && newTran.FixedCost.Value)" />
+                            @if (isUserAdmin)
+                            {
+                                <MudNumericField @bind-Value="@newTran.Price" Label="Cena" />
+
+                                @if (newTran.FixedCost.GetValueOrDefault(false))
+                                {
+                                    <MudTextField Value="@(newTran.Price.GetValueOrDefault(0).ToString("0.##"))" Label="Skupaj" ReadOnly="true" />
+                                }
+                                else
+                                {
+                                    <MudTextField Value="@((newTran.Kilometers * newTran.Price).GetValueOrDefault(0).ToString("0.##"))" Label="Skupaj" ReadOnly="true" />
+                                }
+                            }
+                        </DialogContent>
+                        <DialogActions>
+                            <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="CancelTranDialog" Class="px-10">Prekliči</MudButton>
+                            <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="SaveTranDialog" Class="px-10">Dodaj</MudButton>
+                        </DialogActions>
+                    </MudDialog>
+
+                </EditForm>
+            </div>
+            <div class="flex flex-col md:ml-6">
+                <div>
+                    @if (isUserAdmin && (isInEditMode || isInLookupMode))
+                    {
+                        <MudText Typo="Typo.h6" Class="mb-2">Dodatne kontrole</MudText>
+                        <MudButton StartIcon="@Icons.Material.Filled.Print" Color="Color.Primary" Variant="Variant.Filled" OnClick="PrintPage" Class="ml-auto">Printaj</MudButton>
+                    }
+                </div>
+            </div>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <LoginRedirect></LoginRedirect>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private WorkOrderRentUI workOrderRent = new();
+
+    private List<RentDetailUI> rentDetailList = new();
+    private RentDetailUI rdBeforeEdit = new();
+    private RentDetailUI newRD = new();
+    private bool visibleRD = false;
+
+    private List<TransportationRentUI> transportationList = new();
+    private TransportationRentUI tranBeforeEdit = new();
+    private TransportationRentUI newTran = new();
+    private bool visibleTran = false;
+
+    private bool isInLookupMode = false;
+
+    private bool isUserAdmin = false;
+    private LoggedInUserModel loggedUser;
+    private bool saveWO = false;
+    private bool isInEditMode = false;
+
+    [Parameter]
+    public WorkOrderRentUI lookupWOR { get; set; }
+
+    [Parameter]
+    public bool editMode { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        loggedUser = await sessionStorage.GetItemAsync<LoggedInUserModel>("User");
+        if (loggedUser == null)
+        {
+            return;
+        }
+        newTran.Kilometers = 0;
+        newTran.Price = 0;
+        loggedUser = await sessionStorage.GetItemAsync<LoggedInUserModel>("User");
+        isUserAdmin = loggedUser.RoleId == (int)UserRole.Admin;
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (lookupWOR != null)
+        {
+            workOrderRent = lookupWOR;
+            rentDetailList = lookupWOR.RentDetails.ToList();
+            transportationList = lookupWOR.TransportationRents.ToList();
+            isInLookupMode = !editMode;
+        }
+        isInEditMode = editMode;
+    }
+
+    private async void OnValidSubmit()
+    {
+        workOrderRent.RentDetails = rentDetailList;
+        workOrderRent.TransportationRents = transportationList;
+        workOrderRent.ModifiedByUserId = loggedUser.Id;
+
+        if (isInEditMode)
+        {
+            var woo = new WorkOrderOverviewUI
+            {
+                Id = workOrderRent.Id,
+                WorkOrderType = "Najem"
+            };
+            await workOrderClient.DeleteWorkOrderAsync(woo);
+        }
+
+        if (saveWO)
+        {
+            workOrderRent.WorkOrderStatusId = (int)WorkOrderStatusEnum.Saved;
+        }
+        else
+        {
+            workOrderRent.WorkOrderStatusId = isUserAdmin ? (int)WorkOrderStatusEnum.Finished : (int)WorkOrderStatusEnum.ToConfirm;
+        }
+
+        var newId = await workOrderClient.AddWorkOrderRentAsync(workOrderRent);
+        if (newId > 0)
+        {
+            workOrderRent.Id = newId;
+            Snackbar.Add("Zapis uspešno dodan", Severity.Success);
+            NavManager.NavigateTo("/workorderoverview");
+        }
+    }
+
+    private void SaveWorkOrder()
+    {
+        saveWO = true;
+    }
+
+    private void BackupItemRentDetail(object element)
+    {
+        rdBeforeEdit = new()
+        {
+            RentDays = ((RentDetailUI)element).RentDays,
+            Price = ((RentDetailUI)element).Price,
+            PriceTotal = ((RentDetailUI)element).PriceTotal
+        };
+    }
+
+    private void BackupItemTran(object element)
+    {
+        tranBeforeEdit = new()
+        {
+            Relation = ((TransportationRentUI)element).Relation,
+            Kilometers = ((TransportationRentUI)element).Kilometers,
+            FixedCost = ((TransportationRentUI)element).FixedCost,
+            Price = ((TransportationRentUI)element).Price,
+            PriceTotal = ((TransportationRentUI)element).PriceTotal
+        };
+    }
+
+    private void ResetTran(object element)
+    {
+        ((TransportationRentUI)element).Relation = tranBeforeEdit.Relation;
+        ((TransportationRentUI)element).Kilometers = tranBeforeEdit.Kilometers;
+        ((TransportationRentUI)element).FixedCost = tranBeforeEdit.FixedCost;
+        ((TransportationRentUI)element).Price = tranBeforeEdit.Price;
+        ((TransportationRentUI)element).PriceTotal = tranBeforeEdit.PriceTotal;
+    }
+    private void ResetRentDetail(object element)
+    {
+        ((RentDetailUI)element).RentDays = rdBeforeEdit.RentDays;
+        ((RentDetailUI)element).Price = rdBeforeEdit.Price;
+        ((RentDetailUI)element).PriceTotal = rdBeforeEdit.PriceTotal;
+    }
+
+    private void OpenRentDetailDialog()
+    {
+        visibleRD = true;
+    }
+
+    private void OpenTranDialog()
+    {
+        visibleTran = true;
+    }
+
+    private void DeleteRentDetail(RentDetailUI rentDetail)
+    {
+        var removedItem = rentDetailList.Where(
+            note => note.RentDays == rentDetail.RentDays && note.Price == rentDetail.Price && note.PriceTotal == rentDetail.PriceTotal).FirstOrDefault();
+        rentDetailList.Remove(removedItem);
+    }
+
+    private void DeleteTran(TransportationRentUI tran)
+    {
+        var removedItem = transportationList.Where(
+            note => note.Relation == tran.Relation && note.Price == tran.Price && note.PriceTotal == tran.PriceTotal).FirstOrDefault();
+        transportationList.Remove(removedItem);
+    }
+
+    private void CancelRentDetailDialog()
+    {
+        newRD.RentDays = 0;
+        newRD.Price = 0;
+        newRD.PriceTotal = 0;
+        visibleRD = false;
+    }
+    private void CancelTranDialog()
+    {
+        newTran.Relation = "";
+        newTran.Kilometers = 0;
+        newTran.FixedCost = false;
+        newTran.Price = 0;
+        newTran.PriceTotal = 0;
+        visibleTran = false;
+    }
+    private void SaveRentDetailDialog()
+    {
+        var tmp = new RentDetailUI
+        {
+            RentDays = newRD.RentDays,
+            Price = newRD.Price,
+            PriceTotal = newRD.PriceTotal
+        };
+        rentDetailList.Add(tmp);
+        newRD.RentDays = 0;
+        newRD.Price = 0;
+        newRD.PriceTotal = 0;
+        visibleRD = false;
+    }
+
+    private void SaveTranDialog()
+    {
+        var tmp = new TransportationRentUI
+        {
+            Relation = newTran.Relation,
+            Kilometers = newTran.Kilometers,
+            FixedCost = newTran.FixedCost,
+            Price = newTran.Price,
+            PriceTotal = newTran.PriceTotal
+        };
+        transportationList.Add(tmp);
+        newTran.Relation = "";
+        newTran.Kilometers = 0;
+        newTran.FixedCost = false;
+        newTran.Price = 0;
+        newTran.PriceTotal = 0;
+        visibleTran = false;
+    }
+
+    private void PrintPage()
+    {
+        NavManager.NavigateTo("/printrent/" + workOrderRent.Id);
+    }
+}

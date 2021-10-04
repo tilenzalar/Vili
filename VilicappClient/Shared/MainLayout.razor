@@ -1,0 +1,53 @@
+﻿@inherits LayoutComponentBase
+@using VilicappAPI
+@using VilicappClient.BusinessLogic
+@inject UsersClient usersclient
+@inject Blazored.SessionStorage.ISessionStorageService sessionStorage
+@inject NavigationManager NavManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+
+<div class="page">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <div class="main">
+        <div class="top-row px-4">
+            <h3 style="padding-right: 20px">
+                @if (user != null)
+                {
+                    @($"Pozdravljeni {user.UserName}");
+                }
+            </h3>
+            <MudButton OnClick="LogoutUser" Variant="Variant.Filled" Color="Color.Primary">Odjava</MudButton>
+        </div>
+
+        <div class="content px-4">
+            @Body
+        </div>
+    </div>
+</div>
+
+@code {
+    private LoginRequestUserModel user;
+    protected override async Task OnInitializedAsync()
+    {
+        user = await sessionStorage.GetItemAsync<LoginRequestUserModel>("User");
+    }
+
+    private async void LogoutUser()
+    {
+        var loggedUser = await sessionStorage.GetItemAsync<LoginRequestUserModel>("User");
+        var success = await usersclient.LogoutAsync(loggedUser.UserName);
+        if (!success)
+        {
+            return;
+        }
+
+        ((CustomAuthenticationStateProvider)AuthenticationStateProvider).MarkUserAsLoggedOut();
+
+        NavManager.NavigateTo("/");
+
+    }
+}

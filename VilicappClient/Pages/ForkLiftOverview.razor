@@ -1,0 +1,213 @@
+﻿@page "/forkliftoverview"
+@using VilicappAPI
+@inject ISnackbar Snackbar
+@using VilicappClient.Models
+@inject ForkLiftClient forkLiftClient
+@inject Blazored.SessionStorage.ISessionStorageService sessionStorage
+@inject NavigationManager NavManager
+
+<AuthorizeView Context="neki">
+    <Authorized>
+        <div style="max-width: 700px">
+            <MudTable Items="@forkLifts" Filter="new Func<ForkLiftUI,bool>(FilterFunc1)">
+                <ToolBarContent>
+                    <MudText Typo="Typo.h6">Pregled viličarjev</MudText>
+                    <MudButton Color="Color.Secondary" Variant="Variant.Filled" OnClick="OpenRentDetailDialog" Class="ml-5">Dodaj</MudButton>
+                    <MudSpacer />
+                    <MudTextField @bind-Value="searchString" Placeholder="Išči" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0"></MudTextField>
+                </ToolBarContent>
+                <HeaderContent>
+                    <MudTh><MudTableSortLabel InitialDirection="SortDirection.Ascending" SortBy="new Func<ForkLiftUI, object>(x=>x.InternalNumber)">Interna št.</MudTableSortLabel></MudTh>
+                    <MudTh><MudTableSortLabel SortBy="new Func<ForkLiftUI, object>(x=>x.Name)">Viličar</MudTableSortLabel></MudTh>
+                    <MudTh><MudTableSortLabel SortBy="new Func<ForkLiftUI, object>(x=>x.Description)">Opis</MudTableSortLabel></MudTh>
+                    <MudTh><MudTableSortLabel SortBy="new Func<ForkLiftUI, object>(x=>x.ForkLiftTypeName)">Status</MudTableSortLabel></MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+
+                <RowTemplate>
+                    <MudTd DataLabel="Viličar">@context.InternalNumber</MudTd>
+                    <MudTd DataLabel="Viličar">@context.Name</MudTd>
+                    <MudTd DataLabel="Opis">@context.Description</MudTd>
+                    <MudTd DataLabel="Status">@context.ForkLiftTypeName</MudTd>
+                    <MudTd DataLabel="">
+                        @if (context.ForkLiftTypeId == 1) //prost
+                        {
+                            <MudFab @onclick="@(()=>OpenDeleteDialog(context.Id))" Color="Color.Error" Icon="@Icons.Material.Filled.Delete" Size="Size.Small" IconSize="Size.Small" />
+                        }
+                        else
+                        {
+                            <MudFab @onclick="@(()=>OpenForkLiftInfo(context.Id))" Color="Color.Info" Icon="@Icons.Material.Filled.Info" Size="Size.Small" Class="mr-3" IconSize="Size.Small" />
+                        }
+                    </MudTd>
+                </RowTemplate>
+                <PagerContent>
+                    <MudTablePager />
+                </PagerContent>
+            </MudTable>
+
+            <MudDialog @bind-IsVisible="visibleAddDialog">
+                <TitleContent>
+                    <MudText Typo="Typo.h6">
+                        <MudIcon Icon="@Icons.Material.Filled.Edit" Class="mr-3" /> Nov zapis
+                    </MudText>
+                </TitleContent>
+                <DialogContent>
+                    <MudTextField @bind-Value="@newForkLift.InternalNumber" Label="Interna številka" />
+                    <MudTextField @bind-Value="@newForkLift.Name" Label="Ime viličarja" />
+                    <MudTextField @bind-Value="@newForkLift.Description" Label="Opis" />
+                </DialogContent>
+                <DialogActions>
+                    <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="CancelAddDialog" Class="px-10">Prekliči</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="SaveRentDetailDialog" Class="px-10">Dodaj</MudButton>
+                </DialogActions>
+            </MudDialog>
+
+            <MudDialog @bind-IsVisible="visibleDialog">
+                <TitleContent>
+                    <MudText Typo="Typo.h6">
+                        <MudIcon Icon="@Icons.Material.Filled.Delete" Class="mr-3" /> Brisanje
+                    </MudText>
+                </TitleContent>
+                <DialogContent>
+                    Ali ste prepričani, da želite izbrisati viličarja?
+                </DialogContent>
+                <DialogActions>
+                    <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="CancelDelete" Class="px-10">Prekliči</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="ConfirmDelete" Class="px-10">Potrdi</MudButton>
+                </DialogActions>
+            </MudDialog>
+
+            <MudDialog @bind-IsVisible="visibleInfoDialog">
+                <TitleContent>
+                    <MudText Typo="Typo.h6">
+                        <MudIcon Icon="@Icons.Material.Filled.Info" Class="mr-3" /> Podatki o najemu
+                    </MudText>
+                </TitleContent>
+                <DialogContent>
+                    <MudTextField @bind-Value="infoRent.Client" Label="Stranka" Variant="Variant.Text" ReadOnly="true"></MudTextField>
+                    <MudTextField @bind-Value="infoRent.ForkLiftExtendedName" Label="Viličar" Variant="Variant.Text" ReadOnly="true"></MudTextField>
+                    <MudDatePicker Label="Začetek najema" DateFormat="dd.MM.yyyy" @bind-Date="infoRent.StartRent" DisableToolbar="true" ReadOnly="true" />
+                    <MudDatePicker Label="Konec najema" DateFormat="dd.MM.yyyy" @bind-Date="infoRent.EndRent" DisableToolbar="true" ReadOnly="true" />
+                </DialogContent>
+                <DialogActions>
+                    <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="CancelInfo" Class="px-10">Zapri</MudButton>
+                </DialogActions>
+            </MudDialog>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <LoginRedirect></LoginRedirect>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+
+    private List<ForkLiftUI> forkLifts = new();
+    private string searchString = "";
+    private bool visibleAddDialog = false;
+    private ForkLiftUI newForkLift = new();
+    private int selectedId = 0;
+    private bool visibleDialog = false;
+    private bool visibleInfoDialog = false;
+    private ForkLiftRentUI infoRent = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var loggedUser = await sessionStorage.GetItemAsync<LoggedInUserModel>("User");
+        if (loggedUser == null)
+        {
+            return;
+        }
+        if (loggedUser.RoleId != (int)UserRole.Admin)
+        {
+            NavManager.NavigateTo("/");
+        }
+        forkLifts = (await forkLiftClient.GetAllForkLiftsAsync()).ToList();
+    }
+
+
+    private bool FilterFunc1(ForkLiftUI element) => FilterFunc(element, searchString);
+
+    private bool FilterFunc(ForkLiftUI element, string searchString)
+    {
+
+        if (string.IsNullOrWhiteSpace(searchString))
+            return true;
+        if (element.Name.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (element.InternalNumber.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (element.Description == null)
+            return false;
+        if (element.Description.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (element.ForkLiftTypeName.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        return false;
+    }
+
+    private void OpenRentDetailDialog()
+    {
+        visibleAddDialog = true;
+    }
+
+    private void CancelAddDialog()
+    {
+        newForkLift.Name = "";
+        newForkLift.Description = "";
+        newForkLift.ForkLiftTypeName = "";
+        visibleAddDialog = false;
+    }
+
+    private async void SaveRentDetailDialog()
+    {
+        newForkLift.ForkLiftTypeId = 1;
+        await forkLiftClient.AddForkLiftAsync(newForkLift);
+        Snackbar.Add("Zapis uspešno dodan", Severity.Success);
+        forkLifts = (await forkLiftClient.GetAllForkLiftsAsync()).ToList();
+        visibleAddDialog = false;
+        newForkLift = new();
+        StateHasChanged();
+    }
+
+
+    private void OpenDeleteDialog(int id)
+    {
+        selectedId = id;
+        visibleDialog = true;
+    }
+
+    private async void ConfirmDelete()
+    {
+        var result = await forkLiftClient.DeleteForkLiftAsync(selectedId);
+        if (result)
+        {
+            forkLifts = (await forkLiftClient.GetAllForkLiftsAsync()).ToList();
+            Snackbar.Add("Zapis uspešno zbrisan", Severity.Success);
+        }
+        else
+        {
+            Snackbar.Add("Napaka pri brisanju", Severity.Error);
+        }
+        visibleDialog = false;
+        StateHasChanged();
+    }
+
+    private void CancelDelete()
+    {
+        visibleDialog = false;
+    }
+
+    private void CancelInfo()
+    {
+        visibleInfoDialog = false;
+    }
+
+    private async void OpenForkLiftInfo(int forkLiftId)
+    {
+        infoRent = await forkLiftClient.GetForkLiftRentAsync(forkLiftId);
+        visibleInfoDialog = true;
+        StateHasChanged();
+    }
+
+}
